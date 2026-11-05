@@ -41,12 +41,7 @@
     {{end}}
 
     <form method="get" action="/vault" class="search">
-      <input type="search" name="q" value="{{.Query}}" placeholder="Search name or tags" aria-label="Search entries" {{if .Query}}autofocus{{end}}>
-      <select name="scope" aria-label="Search in">
-        <option value="all" {{if eq .Scope "all"}}selected{{end}}>All</option>
-        <option value="name" {{if eq .Scope "name"}}selected{{end}}>Name</option>
-        <option value="tags" {{if eq .Scope "tags"}}selected{{end}}>Tags</option>
-      </select>
+      <input type="search" name="q" value="{{.Query}}" placeholder="Fuzzy search: name or tags" aria-label="Search entries" {{if .Query}}autofocus{{end}}>
       {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
       {{if .Tag}}<input type="hidden" name="tag" value="{{.Tag}}">{{end}}
       {{if .Sort}}<input type="hidden" name="sort" value="{{.Sort}}">{{end}}

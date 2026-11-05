@@ -205,12 +205,44 @@
 
   var searchInput = document.querySelector('input[type="search"][name="q"]');
   if (searchInput && searchInput.form) {
+    var searchForm = searchInput.form;
     var searchTimer = null;
+    var searchSeq = 0;
+
+    function runLiveSearch() {
+      var seq = ++searchSeq;
+      var params = new URLSearchParams(new FormData(searchForm));
+      var url = searchForm.getAttribute("action") + "?" + params.toString();
+      fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
+        .then(function (res) {
+          if (!res.ok) throw new Error("status " + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          if (seq !== searchSeq) return;
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          var newBody = doc.querySelector(".entries tbody");
+          var oldBody = document.querySelector(".entries tbody");
+          if (!newBody || !oldBody) {
+            window.location.href = url;
+            return;
+          }
+          oldBody.innerHTML = newBody.innerHTML;
+          var newCount = doc.querySelector(".content-head p.muted");
+          var oldCount = document.querySelector(".content-head p.muted");
+          if (newCount && oldCount) oldCount.innerHTML = newCount.innerHTML;
+          try { history.replaceState(null, "", url); } catch (e) {}
+        })
+        .catch(function () {});
+    }
+
     searchInput.addEventListener("input", function () {
       if (searchTimer) clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () {
-        searchInput.form.submit();
-      }, 300);
+      searchTimer = setTimeout(runLiveSearch, 300);
+    });
+    searchForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      runLiveSearch();
     });
   }
 
@@ -290,11 +322,20 @@
       showMenu(event.clientX, event.clientY, li);
     });
 
-    document.addEventListener("click", function (event) {
-      if (menu.hidden) return;
-      if (event.target && event.target.closest && event.target.closest("#folder-menu")) return;
+    function outsideMenu(event) {
+      if (menu.hidden) return false;
+      if (event.target && event.target.closest && event.target.closest("#folder-menu")) return false;
       hideMenu();
+      return true;
+    }
+
+    document.addEventListener("click", outsideMenu);
+    document.addEventListener("mousedown", outsideMenu);
+    document.addEventListener("contextmenu", function (event) {
+      var onFolder = event.target && event.target.closest && event.target.closest("li.folder-item");
+      if (!onFolder && !menu.hidden) hideMenu();
     });
+    window.addEventListener("scroll", hideMenu, true);
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape") hideMenu();
     });

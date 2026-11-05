@@ -226,7 +226,50 @@ detached helper that clears the clipboard after 30 seconds, but only if the
 clipboard still contains the copied value. Set `FVAULT_CLIPBOARD_CLEAR_SECONDS`
 to change the delay (`0` disables the timer).
 
-## Markdown import
+## Import
+
+fvault can import passwords from five formats, and export them back out again.
+
+| Format | Command |
+| --- | --- |
+| Markdown (one line per entry) | `fvault import-md <file.md>` |
+| Markdown (headings + key lines) | `fvault import-md <file.md>` |
+| CSV | `fvault import-csv <file.csv>` |
+| JSON | `fvault import-json <file.json>` |
+| Bitwarden JSON export | `fvault import-bitwarden <export.json>` |
+| 1Password CSV export | `fvault import-1password <export.csv>` |
+
+Every import command accepts the same flags:
+
+```bash
+--folder NAME     # destination folder (default: general)
+--dry-run         # preview the entries without changing the vault
+--overwrite       # replace existing entries that have the same name
+```
+
+Preview first, import second:
+
+```bash
+fvault import-md passwords.md --folder imported --dry-run
+fvault import-md passwords.md --folder imported
+```
+
+### Markdown
+
+Simplest format — one `Name : Password` per line, no headings or key lines
+needed:
+
+```markdown
+Supervisor : WFS670303
+Student Portal (Degree) : UiTM@Jasin787
+Steam : my-steam-password
+```
+
+Names are cleaned automatically (`Student Portal (Degree)` becomes
+`Student-Portal-Degree`), a `## section title` line on its own is ignored, and
+passwords containing `:` are kept intact.
+
+The classic format with headings and `key: value` lines still works too:
 
 ```markdown
 ## github
@@ -234,20 +277,77 @@ username: octocat
 password: correct-horse-battery-staple
 url: https://github.com
 notes: personal account
-
-## mail
-username: me@example.com
-password: hunter2
-url: https://mail.example.com
 ```
+
+Lines may start with an optional `- ` or `* ` prefix.
+
+### CSV
+
+Only a name column and a password column are required:
+
+- Name column: `name`, `title`, `label`, `entry`, or `item` — or a `username`
+  column whose value is used as the name.
+- Password column: `password` or `pass`.
+- Optional: `folder`, `username`, `tags` (separated by `;`), `pinned`.
+- Extra columns are ignored, so most password-manager CSV exports work as-is.
+
+```csv
+name,password
+Router,secret1
+My Router 2.0,secret2
+```
+
+### JSON
+
+An array of objects; `folder`, `username`, `tags`, and `pinned` are optional:
+
+```json
+[
+  {
+    "folder": "server-1",
+    "name": "github",
+    "username": "octocat",
+    "password": "correct-horse-battery-staple",
+    "tags": ["prod"],
+    "pinned": true
+  }
+]
+```
+
+### Bitwarden
+
+Export from Bitwarden as **unencrypted JSON** (Tools -> Export vault -> JSON
+without password), then:
 
 ```bash
-fvault import-md secrets.md --folder personal --dry-run
-fvault import-md secrets.md --folder personal
+fvault import-bitwarden bitwarden-export.json --folder imported
 ```
 
-Lines may start with an optional `- `. Unknown keys are ignored. Existing
-entries are skipped unless `--overwrite` is passed.
+Login items are imported with their names, usernames, passwords, and folders.
+
+### 1Password
+
+Export from 1Password as **CSV**, then:
+
+```bash
+fvault import-1password 1password-export.csv --folder imported
+```
+
+Title, Username, Password, and Tags columns are read; other columns are
+ignored.
+
+## Export
+
+```bash
+fvault export-csv passwords.csv    # open in Excel / edit / re-import
+fvault export-json passwords.json
+fvault backup export vault.json    # whole vault, still encrypted
+```
+
+The web UI also offers **Backup -> Download encrypted vault** for moving to a
+new computer (see [Moving to a new computer](#moving-to-a-new-computer)).
+
+Existing entries are skipped on import unless `--overwrite` is passed.
 
 ## Web UI
 
@@ -357,4 +457,3 @@ go test ./...
 ```
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common problems.
-# fvault

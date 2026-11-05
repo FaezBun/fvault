@@ -1,5 +1,25 @@
 # fvault Version History
 
+## Update 1.1.3
+
+05/11/2026 21:52
+
+### Changes
+
+- Fixed folder right-click menu not closing when clicking elsewhere
+  (CSS `hidden` override plus mousedown/scroll/contextmenu listeners).
+- Removed the search scope dropdown; the search bar is now a single fuzzy
+  search across entry names and tags.
+- Live search now updates results in place with fetch (no page reload, cursor
+  stays where you type).
+- Theme is applied before first paint, so dark mode no longer flickers on
+  every search refresh.
+- Markdown import accepts simple `Name : Password` lines (headings and key
+  lines optional) with automatic name sanitising.
+- CSV import needs only a name/username column and a password column.
+- README now documents every import format (Markdown, CSV, JSON, Bitwarden,
+  1Password) and the export formats in one reference section.
+
 ## Update 1.1.1
 
 05/11/2026 21:18

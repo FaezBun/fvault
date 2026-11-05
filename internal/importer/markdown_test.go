@@ -121,3 +121,93 @@ func TestMask(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSimpleLines(t *testing.T) {
+	input := `### T490s BIOS
+Supervisor : WFS670303
+PC : Nbf303303
+
+Student Portal (Degree) : UiTM@Jasin787
+Yonny (depres) : !,'8Yw:4m"kg2:'
+Foo : pa:ss:word
+Huawei mama faezyahizan@gmail : Wfs670303*
+
+Recovery Codes
+[[github-recovery-codes.txt]]
+`
+	entries, warnings, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := map[string]string{
+		"Supervisor":                    "WFS670303",
+		"PC":                            "Nbf303303",
+		"Student-Portal-Degree":         "UiTM@Jasin787",
+		"Yonny-depres":                  "!,'8Yw:4m\"kg2:'",
+		"Foo":                           "pa:ss:word",
+		"Huawei-mama-faezyahizan-gmail": "Wfs670303*",
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("entries = %d (%+v), want %d", len(entries), entries, len(want))
+	}
+	for _, e := range entries {
+		pw, ok := want[e.Name]
+		if !ok {
+			t.Errorf("unexpected entry %q", e.Name)
+			continue
+		}
+		if e.Password != pw {
+			t.Errorf("entry %q password = %q, want %q", e.Name, e.Password, pw)
+		}
+	}
+	// The section heading and text lines must be ignored, not turned into
+	// broken entries or hard errors.
+	for _, w := range warnings {
+		if strings.Contains(w.Message, "T490s") {
+			t.Errorf("section heading produced a warning: %s", w.Message)
+		}
+	}
+}
+
+func TestParseClassicStillWorks(t *testing.T) {
+	input := `# Title
+## github
+username: octocat
+password: s3cret
+unknown: value
+`
+	entries, warnings, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name != "github" || entries[0].Password != "s3cret" {
+		t.Fatalf("entries = %+v", entries)
+	}
+	foundUnknown := false
+	for _, w := range warnings {
+		if strings.Contains(w.Message, `unknown field`) {
+			foundUnknown = true
+		}
+	}
+	if !foundUnknown {
+		t.Fatalf("expected unknown field warning, got %+v", warnings)
+	}
+}
+
+func TestSanitizeEntryName(t *testing.T) {
+	cases := map[string]string{
+		"github":           "github",
+		"2016":             "2016",
+		"Student Portal":   "Student-Portal",
+		"Yonny (depres)":   "Yonny-depres",
+		"faezy@gmail.com":  "faezy-gmail.com",
+		"-leading":         "leading",
+		"  spaced  name  ": "spaced-name",
+		"...dots...":       "dots",
+	}
+	for in, want := range cases {
+		if got := sanitizeEntryName(in); got != want {
+			t.Errorf("sanitizeEntryName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

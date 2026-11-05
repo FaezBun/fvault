@@ -244,7 +244,6 @@ textarea { resize: vertical; }
   margin-bottom: 1rem;
 }
  .search input[type="search"],
-.search select,
 .search button {
   margin: 0;
   min-height: 2.5rem;
@@ -477,6 +476,7 @@ textarea { resize: vertical; }
   flex-direction: column;
   gap: 0.1rem;
 }
+.context-menu[hidden] { display: none; }
 .context-menu button {
   border: 0;
   background: transparent;

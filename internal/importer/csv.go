@@ -8,8 +8,10 @@ import (
 	"strings"
 )
 
-// ParseCSV reads a CSV file with a header row. Required column: name.
-// Optional columns: folder, username, password, tags, pinned.
+// ParseCSV reads a CSV file with a header row. It only needs a name column
+// (name, title, label, entry or item — or a username column as a fallback) and
+// a password column (password or pass). Optional columns: folder, username,
+// tags, pinned. Extra columns are ignored.
 func ParseCSV(r io.Reader) ([]Entry, []Warning, error) {
 	reader := csv.NewReader(r)
 	reader.FieldsPerRecord = -1
@@ -24,13 +26,14 @@ func ParseCSV(r io.Reader) ([]Entry, []Warning, error) {
 	for i, name := range rows[0] {
 		header[strings.ToLower(strings.TrimSpace(name))] = i
 	}
-	nameIndex, ok := header["name"]
-	if !ok {
-		if idx, ok := header["title"]; ok {
-			nameIndex = idx
-		} else {
-			return nil, nil, fmt.Errorf("CSV header must contain a name column")
-		}
+	nameIndex := indexOf(header, "name", "title", "label", "entry", "item")
+	usernameIndex := indexOf(header, "username", "user", "login")
+	passwordIndex := indexOf(header, "password", "pass", "pwd")
+	if nameIndex < 0 && usernameIndex < 0 {
+		return nil, nil, fmt.Errorf("CSV header must contain a name or username column")
+	}
+	if passwordIndex < 0 {
+		return nil, nil, fmt.Errorf("CSV header must contain a password column")
 	}
 
 	var entries []Entry
@@ -41,6 +44,10 @@ func ParseCSV(r io.Reader) ([]Entry, []Warning, error) {
 		}
 		name := field(row, header, nameIndex)
 		if name == "" {
+			name = field(row, header, usernameIndex)
+		}
+		name = sanitizeEntryName(name)
+		if name == "" {
 			warnings = append(warnings, Warning{Line: lineNo + 2, Message: "empty name skipped"})
 			continue
 		}
@@ -48,8 +55,8 @@ func ParseCSV(r io.Reader) ([]Entry, []Warning, error) {
 			Name:     name,
 			Line:     lineNo + 2,
 			Folder:   field(row, header, indexOf(header, "folder")),
-			Username: field(row, header, indexOf(header, "username", "user", "login")),
-			Password: field(row, header, indexOf(header, "password", "pass")),
+			Username: field(row, header, usernameIndex),
+			Password: field(row, header, passwordIndex),
 			Tags:     splitTagField(field(row, header, indexOf(header, "tags", "tag"))),
 		}
 		if pinned, err := strconv.ParseBool(field(row, header, indexOf(header, "pinned", "favorite"))); err == nil {

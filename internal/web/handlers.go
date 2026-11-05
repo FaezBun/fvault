@@ -63,7 +63,6 @@ type pageData struct {
 	Folder   string
 	Tag      string
 	Sort     string
-	Scope    string
 	Folders  []folderView
 	Entries  []vault.EntryView
 	Entry    entryFormData
@@ -210,10 +209,6 @@ func (s *Server) handleVault(w http.ResponseWriter, r *http.Request, sess *sessi
 	q := query.Get("q")
 	tag := strings.TrimSpace(query.Get("tag"))
 	sortMode := query.Get("sort")
-	scope := query.Get("scope")
-	if scope != "name" && scope != "tags" {
-		scope = "all"
-	}
 	if sortMode != "tags" {
 		sortMode = ""
 	}
@@ -226,7 +221,6 @@ func (s *Server) handleVault(w http.ResponseWriter, r *http.Request, sess *sessi
 	data.Folder = folder
 	data.Tag = tag
 	data.Sort = sortMode
-	data.Scope = scope
 	for _, name := range v.Payload.FolderNames() {
 		data.Folders = append(data.Folders, folderView{
 			Name:   name,
@@ -236,14 +230,7 @@ func (s *Server) handleVault(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	switch {
 	case q != "":
-		switch scope {
-		case "name":
-			data.Entries = filterByName(v.Payload.Search("", folder), q)
-		case "tags":
-			data.Entries = filterByTagText(v.Payload.Search("", folder), q)
-		default:
-			data.Entries = v.Payload.Search(q, folder)
-		}
+		data.Entries = v.Payload.Search(q, folder)
 	case folder != "":
 		data.Entries = v.Payload.Search("", folder)
 	default:
@@ -704,31 +691,6 @@ func hasTag(tags []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func filterByName(entries []vault.EntryView, query string) []vault.EntryView {
-	q := strings.ToLower(strings.TrimSpace(query))
-	out := make([]vault.EntryView, 0, len(entries))
-	for _, entry := range entries {
-		if strings.Contains(strings.ToLower(entry.Name), q) {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func filterByTagText(entries []vault.EntryView, query string) []vault.EntryView {
-	q := strings.ToLower(strings.TrimSpace(query))
-	out := make([]vault.EntryView, 0, len(entries))
-	for _, entry := range entries {
-		for _, tag := range entry.Tags {
-			if strings.Contains(strings.ToLower(tag), q) {
-				out = append(out, entry)
-				break
-			}
-		}
-	}
-	return out
 }
 
 func (s *Server) handleWriteError(w http.ResponseWriter, r *http.Request, sess *session, err error) {
