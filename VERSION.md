@@ -4,8 +4,6 @@
 
 05/11/2026 21:18
 
-    Commit : b1f0e34
-
 ### Changes
 
 - Folder context menu: right-click a folder to open it, add an entry, rename it, or delete it.
