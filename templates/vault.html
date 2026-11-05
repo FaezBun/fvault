@@ -1,0 +1,96 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="layout">
+  <aside class="sidebar card" data-csrf="{{.CSRF}}">
+    <h2>Folders</h2>
+    <p class="muted small folder-hint">Right-click a folder for rename / delete.</p>
+    <ul class="folders">
+      <li class="{{if not .Folder}}active{{end}}">
+        <a href="/vault">All entries</a>
+      </li>
+      {{range .Folders}}
+      <li class="folder-item{{if .Active}} active{{end}}" data-folder="{{.Name}}" data-locked="{{if eq .Name "general"}}1{{else}}0{{end}}">
+        <a href="/vault?folder={{.Name}}">{{.Name}} <span class="count">{{.Count}}</span></a>
+      </li>
+      {{end}}
+    </ul>
+    <form method="post" action="/folder/new" class="stack">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="small-label">New folder
+        <input type="text" name="name" placeholder="server-1" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" required>
+      </label>
+      <button type="submit">Add folder</button>
+    </form>
+  </aside>
+
+  <section class="content">
+    {{template "flash" .}}
+    <div class="content-head">
+      <div>
+        <h1>{{if .Folder}}{{.Folder}}{{else}}All entries{{end}}</h1>
+        <p class="muted">{{len .Entries}} entr{{if eq (len .Entries) 1}}y{{else}}ies{{end}}{{if .Query}} matching &ldquo;{{.Query}}&rdquo;{{end}}</p>
+      </div>
+      <a class="button primary" href="/entry/new?folder={{if .Folder}}{{.Folder}}{{else}}general{{end}}">New entry</a>
+    </div>
+
+    {{if .Tag}}
+    <div class="flash success" role="status">
+      Filtered by tag: <strong>{{.Tag}}</strong>
+      <a class="link" href="/vault{{if .Folder}}?folder={{.Folder}}{{else}}{{if .Query}}?q={{.Query}}{{end}}{{end}}">Clear tag</a>
+    </div>
+    {{end}}
+
+    <form method="get" action="/vault" class="search">
+      <input type="search" name="q" value="{{.Query}}" placeholder="Search name or tags" aria-label="Search entries" {{if .Query}}autofocus{{end}}>
+      <select name="scope" aria-label="Search in">
+        <option value="all" {{if eq .Scope "all"}}selected{{end}}>All</option>
+        <option value="name" {{if eq .Scope "name"}}selected{{end}}>Name</option>
+        <option value="tags" {{if eq .Scope "tags"}}selected{{end}}>Tags</option>
+      </select>
+      {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
+      {{if .Tag}}<input type="hidden" name="tag" value="{{.Tag}}">{{end}}
+      {{if .Sort}}<input type="hidden" name="sort" value="{{.Sort}}">{{end}}
+      <button type="submit">Search</button>
+      {{if .Query}}<a class="link" href="/vault{{if .Folder}}?folder={{.Folder}}{{end}}">Clear</a>{{end}}
+    </form>
+
+    <div class="card table-card">
+      <table class="entries">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Folder</th>
+            <th>Username</th>
+            <th>Tags</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Entries}}
+          <tr>
+            <td><a href="/entry?folder={{.Folder}}&name={{.Name}}">{{.Name}}</a></td>
+            <td><span class="tag">{{.Folder}}</span></td>
+            <td class="mono">{{if .Username}}{{.Username}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            <td class="tags">{{if .Tags}}{{range .Tags}}<a class="tag" href="/vault?{{if $.Folder}}folder={{$.Folder}}&{{end}}{{if $.Query}}q={{$.Query}}&{{end}}tag={{.}}{{if $.Sort}}&sort={{$.Sort}}{{end}}">{{.}}</a> {{end}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
+            <td class="muted">{{.UpdatedAt}}</td>
+            <td class="actions">
+              <button type="button" class="chip" data-copy="password" data-folder="{{.Folder}}" data-name="{{.Name}}" data-csrf="{{$.CSRF}}">Copy password</button>
+            </td>
+          </tr>
+          {{else}}
+          <tr><td colspan="6" class="empty">No entries yet. Use <strong>New entry</strong> to add your first one.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <div id="folder-menu" class="context-menu" hidden>
+    <button type="button" data-action="open">Open folder</button>
+    <button type="button" data-action="new-entry">New entry here</button>
+    <button type="button" data-action="rename">Rename folder...</button>
+    <button type="button" data-action="delete" class="danger">Delete folder...</button>
+  </div>
+
+</main>
+{{template "foot" .}}

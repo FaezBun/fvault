@@ -1,0 +1,10 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  <section class="card">
+    <h1>Something went wrong</h1>
+    <p class="flash error">{{.Error}}</p>
+    <p><a class="button" href="/vault">Back to vault</a> <a class="button" href="/login">Log in</a></p>
+  </section>
+</main>
+{{template "foot" .}}

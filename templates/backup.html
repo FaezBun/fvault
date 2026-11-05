@@ -1,0 +1,100 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  {{template "flash" .}}
+  <div class="content-head">
+    <div>
+      <h1>Backups</h1>
+      <p class="muted">Backups are created automatically after every vault change.</p>
+    </div>
+    <a class="button" href="/vault">Back to vault</a>
+  </div>
+
+  <section class="card">
+    {{if .Backup.Enabled}}
+    <div class="status-grid">
+      <div class="status">
+        <span class="status-label">Mode</span>
+        <strong>{{.Backup.Mode}}</strong>
+      </div>
+      <div class="status">
+        <span class="status-label">Retention</span>
+        <strong>{{.Backup.KeepLast}} snapshots / {{.Backup.MaxTotalMB}} MB</strong>
+      </div>
+      <div class="status">
+        <span class="status-label">Local snapshots</span>
+        <strong>{{.Backup.LocalCount}} &middot; {{.Backup.LocalBytes}}</strong>
+        <span class="mono muted small">{{.Backup.LocalDir}}</span>
+      </div>
+      <div class="status">
+        <span class="status-label">Remote snapshots</span>
+        <strong>{{.Backup.RemoteCount}} &middot; {{.Backup.RemoteBytes}}</strong>
+        <span class="mono muted small">{{if .Backup.RemoteDir}}{{.Backup.RemoteDir}}{{else}}not configured{{end}}</span>
+      </div>
+    </div>
+    {{if .Backup.RemoteDir}}
+    <div class="remote-status {{if .Backup.RemoteOK}}ok{{else}}warn{{end}}">
+      {{if .Backup.RemoteOK}}Remote target is reachable.{{else}}Remote target unavailable: {{.Backup.RemoteError}}{{end}}
+      <span class="mono small">marker: {{.Backup.RemoteMarker}}</span>
+    </div>
+    {{end}}
+    {{else}}
+    <p>Backups are currently <strong>disabled</strong>.</p>
+    <p class="muted">Enable backups from the command line:</p>
+    <pre class="notes">fvault backup setup</pre>
+    {{end}}
+  </section>
+
+  <section class="card">
+    <h2>Export for a new PC</h2>
+    <p class="muted">Download an encrypted copy of the whole vault. The Master Password is required.</p>
+    <form method="post" action="/backup/export" class="stack">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label>Master Password
+        <div class="password-field">
+          <input type="password" id="backup-export-password" name="password" autocomplete="current-password" required>
+          <button type="button" class="password-toggle" data-target="backup-export-password" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M3 3l18 18M10.6 10.6A3 3 0 0012 15a3 3 0 002.4-4.4M9.9 5.1A10.9 10.9 0 0112 5c7 0 11 7 11 7a18.5 18.5 0 01-4.2 4.9M6.2 6.2A18.5 18.5 0 001 12s4 7 11 7a10.9 10.9 0 004.1-.8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
+      </label>
+      <button type="submit" class="primary">Download encrypted vault</button>
+    </form>
+  </section>
+
+  <section class="card table-card">
+    <h2>Snapshots</h2>
+    <table class="entries">
+      <thead>
+        <tr><th>Snapshot</th><th>Size</th><th>Created</th><th>Location</th></tr>
+      </thead>
+      <tbody>
+        {{range .Backup.Records}}
+        <tr>
+          <td class="mono">{{.Name}}</td>
+          <td>{{.Size}} B</td>
+          <td>{{.ModTime.Format "2006-01-02 15:04"}}</td>
+          <td>
+            {{if .Local}}<span class="tag">local</span>{{end}}
+            {{if .Remote}}<span class="tag">remote</span>{{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4" class="empty">No snapshots yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Maintenance</h2>
+    <p class="muted">Creating, syncing, verifying, and restoring backups requires the Master Password. Use the CLI:</p>
+    <pre class="notes">fvault backup create
+fvault backup sync
+fvault backup verify --all
+fvault backup list
+fvault backup restore latest</pre>
+  </section>
+</main>
+{{template "foot" .}}

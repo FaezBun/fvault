@@ -1,0 +1,17 @@
+{
+  "name": "fvault",
+  "short_name": "fvault",
+  "description": "Encrypted password vault",
+  "start_url": "/vault",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=fvault backup sync and retention
+Documentation=https://github.com/your-org/fvault
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=fvault
+Group=fvault
+WorkingDirectory=/opt/fvault
+Environment="FVAULT_HOME=/var/lib/fvault"
+Environment="FVAULT_BIN=/opt/fvault/bin/fvault"
+ExecStart=/opt/fvault/scripts/backup-sync.sh
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fvault

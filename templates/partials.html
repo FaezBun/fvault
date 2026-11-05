@@ -1,0 +1,43 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - fvault</title>
+  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#2563eb">
+</head>
+<body>
+{{end}}
+
+{{define "nav"}}
+<header class="topbar">
+  <a class="brand" href="/vault"><span class="brand-mark">&#9670;</span> fvault</a>
+  {{if .LoggedIn}}
+  <nav class="nav">
+    <a href="/vault" class="nav-link">Vault</a>
+    <a href="/backup" class="nav-link">Backups</a>
+    <span class="user" title="Signed in">{{.Username}}</span>
+    <button type="button" class="link" id="theme-toggle">Theme</button>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link">Log out</button>
+    </form>
+  </nav>
+  {{end}}
+</header>
+{{end}}
+
+{{define "flash"}}
+{{if .Notice}}<div class="flash success" role="status">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+{{end}}
+
+{{define "foot"}}
+<footer class="footer">fvault &middot; locally encrypted password vault</footer>
+<div id="toast" class="toast" hidden></div>
+<script src="/static/app.js?v=2" defer></script>
+</body>
+</html>
+{{end}}

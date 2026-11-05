@@ -1,0 +1,63 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  <nav class="crumbs">
+    <a href="/vault">Vault</a>
+    <span>/</span>
+    {{if .Entry.IsEdit}}
+    <a href="/entry?folder={{.Entry.Folder}}&name={{.Entry.Name}}">{{.Entry.Name}}</a>
+    <span>/</span>
+    <span>Edit</span>
+    {{else}}
+    <span>New entry</span>
+    {{end}}
+  </nav>
+  {{template "flash" .}}
+
+  <section class="card">
+    <h1>{{if .Entry.IsEdit}}Edit entry{{else}}New entry{{end}}</h1>
+    <form method="post" action="{{if .Entry.IsEdit}}/entry/edit{{else}}/entry/new{{end}}" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="grid-2">
+        <label>Folder
+          <select name="folder" required>
+            {{range .Folders}}
+            <option value="{{.Name}}" {{if eq .Name $.Entry.Folder}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+          {{if .Entry.IsEdit}}
+          <input type="hidden" name="old_folder" value="{{.Entry.OldFolder}}">
+          {{end}}
+        </label>
+        <label>Entry name
+          <input type="text" name="name" value="{{.Entry.Name}}" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" required {{if .Entry.IsEdit}}readonly{{end}} autofocus>
+        </label>
+      </div>
+      <label>Username (optional)
+        <input type="text" name="username" value="{{.Entry.Username}}" autocomplete="off">
+      </label>
+      <label>Tags
+        <input type="text" name="tags" value="{{.Entry.Tags}}" placeholder="prod, server" autocomplete="off">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="pinned" value="1" {{if .Entry.Pinned}}checked{{end}}>
+        Pinned / favorite
+      </label>
+      <label>Password
+        <div class="password-field">
+          <input type="password" id="entry-password" name="password" autocomplete="new-password" {{if not .Entry.IsEdit}}required{{end}}>
+          <button type="button" class="password-toggle" data-target="entry-password" aria-label="Show password" aria-pressed="false">
+            <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M3 3l18 18M10.6 10.6A3 3 0 0012 15a3 3 0 002.4-4.4M9.9 5.1A10.9 10.9 0 0112 5c7 0 11 7 11 7a18.5 18.5 0 01-4.2 4.9M6.2 6.2A18.5 18.5 0 001 12s4 7 11 7a10.9 10.9 0 004.1-.8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
+        {{if .Entry.IsEdit}}<span class="hint">Leave blank to keep the current password.</span>{{end}}
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="primary">{{if .Entry.IsEdit}}Save changes{{else}}Create entry{{end}}</button>
+        <a class="button" href="{{if .Entry.IsEdit}}/entry?folder={{.Entry.Folder}}&name={{.Entry.Name}}{{else}}/vault?folder={{.Entry.Folder}}{{end}}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</main>
+{{template "foot" .}}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily fvault backup sync
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=900
+Persistent=true
+Unit=fvault-backup.service
+
+[Install]
+WantedBy=timers.target

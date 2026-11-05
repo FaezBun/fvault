@@ -1,0 +1,22 @@
+# Vault data and secrets. Never commit these.
+data/
+*.key
+vault.json
+settings.json
+
+# Build output
+bin/
+dist/
+fvault
+
+# Local configuration
+.env
+.env.local
+
+# Test and editor artifacts
+*.test
+*.out
+coverage.html
+.DS_Store
+.idea/
+.vscode/

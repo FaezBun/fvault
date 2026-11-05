@@ -1,0 +1,32 @@
+[Unit]
+Description=fvault encrypted password vault (web UI)
+Documentation=https://github.com/your-org/fvault
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fvault
+Group=fvault
+WorkingDirectory=/opt/fvault
+Environment="FVAULT_HOME=/var/lib/fvault"
+ExecStart=/opt/fvault/bin/fvault serve --host 127.0.0.1 --port 17384 --cookie-secure --trust-proxy
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+ReadWritePaths=/var/lib/fvault
+
+[Install]
+WantedBy=multi-user.target

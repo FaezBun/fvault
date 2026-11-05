@@ -1,0 +1,57 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  <nav class="crumbs">
+    <a href="/vault">Vault</a>
+    <span>/</span>
+    <a href="/vault?folder={{.Entry.Folder}}">{{.Entry.Folder}}</a>
+    <span>/</span>
+    <span>{{.Entry.Name}}</span>
+  </nav>
+  {{template "flash" .}}
+
+  <section class="card detail">
+    <div class="detail-head">
+      <div>
+        <h1>{{.Entry.Name}}</h1>
+        <span class="tag">{{.Entry.Folder}}</span>
+      </div>
+      <div class="detail-actions">
+        <a class="button" href="/entry/edit?folder={{.Entry.Folder}}&name={{.Entry.Name}}">Edit</a>
+        <form method="post" action="/entry/delete" class="inline" data-confirm="Delete entry {{.Entry.Name}}? This cannot be undone.">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="folder" value="{{.Entry.Folder}}">
+          <input type="hidden" name="name" value="{{.Entry.Name}}">
+          <button type="submit" class="button danger">Delete</button>
+        </form>
+      </div>
+    </div>
+
+    <dl class="fields">
+      <dt>Username</dt>
+      <dd class="field-row">
+        <span id="username-value" class="mono">{{.Entry.Username}}</span>
+        {{if .Entry.Username}}
+        <button type="button" class="chip" data-copy="username" data-folder="{{.Entry.Folder}}" data-name="{{.Entry.Name}}" data-csrf="{{.CSRF}}">Copy</button>
+        {{end}}
+      </dd>
+
+      <dt>Tags</dt>
+      <dd>{{if .Entry.Tags}}{{.Entry.Tags}}{{else}}<span class="muted">&mdash;</span>{{end}}</dd>
+
+      <dt>Pinned</dt>
+      <dd>{{if .Entry.Pinned}}Yes{{else}}<span class="muted">No</span>{{end}}</dd>
+
+      <dt>Password</dt>
+      <dd class="field-row">
+        <span id="password-value" class="mono password" data-folder="{{.Entry.Folder}}" data-name="{{.Entry.Name}}" data-csrf="{{.CSRF}}" data-revealed="0">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+        <button type="button" class="chip" id="reveal-button" data-folder="{{.Entry.Folder}}" data-name="{{.Entry.Name}}" data-csrf="{{.CSRF}}">Reveal</button>
+        <button type="button" class="chip" data-copy="password" data-folder="{{.Entry.Folder}}" data-name="{{.Entry.Name}}" data-csrf="{{.CSRF}}">Copy</button>
+      </dd>
+
+    </dl>
+  </section>
+
+  <p><a href="/vault?folder={{.Entry.Folder}}">&larr; Back to {{.Entry.Folder}}</a></p>
+</main>
+{{template "foot" .}}
