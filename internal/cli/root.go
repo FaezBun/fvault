@@ -28,7 +28,7 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "fvault",
 		Short:         "Encrypted password vault for the CLI and web",
-		Version:       "1.1.3",
+		Version:       "1.1.4",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -53,7 +53,10 @@ func newRoot() *cobra.Command {
 		newSearchCmd(),
 		newRemoveCmd(),
 		newFolderCmd(),
+		newTagCmd(),
 		newPasswdCmd(),
+		newKitCmd(),
+		newRecoveryCmd(),
 		newImportCmd(),
 		newBackupCmd(),
 		newDoctorCmd(),

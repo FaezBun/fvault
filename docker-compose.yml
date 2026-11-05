@@ -1,0 +1,20 @@
+services:
+  fvault:
+    build: .
+    image: fvault:latest
+    container_name: fvault
+    ports:
+      - "17384:17384"
+    environment:
+      FVAULT_HOME: /data
+      FVAULT_HOST: 0.0.0.0
+      FVAULT_PORT: "17384"
+      # Enable once you run behind HTTPS:
+      # FVAULT_COOKIE_SECURE: "true"
+      # FVAULT_TRUST_PROXY: "true"
+    volumes:
+      - fvault-data:/data
+    restart: unless-stopped
+
+volumes:
+  fvault-data:

@@ -16,6 +16,7 @@ type Paths struct {
 	Settings string
 	Secret   string
 	Backups  string
+	Recovery string
 }
 
 // ResolveHome returns the absolute data directory. Priority:
@@ -42,6 +43,7 @@ func NewPaths(home string) Paths {
 		Settings: filepath.Join(home, "settings.json"),
 		Secret:   filepath.Join(home, "secret.key"),
 		Backups:  filepath.Join(home, "backups"),
+		Recovery: filepath.Join(home, "recovery.json"),
 	}
 }
 

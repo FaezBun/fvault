@@ -1,5 +1,25 @@
 # fvault Version History
 
+## Update 1.1.4
+
+06/11/2026 01:04
+
+### Changes
+
+- Password generator button on the web entry form (length + symbols options).
+- Emergency kit printed after vault creation; new `fvault kit` command.
+- Tag management: `fvault tag list|rename|delete`, sidebar tag cloud, and a
+  `/tags` page to rename or remove tags everywhere at once.
+- Docker deployment: `Dockerfile` (multi-stage, non-root, healthcheck) and
+  `docker-compose.yml`.
+- Change the Master Password from the web (click your username in the nav);
+  all sessions are logged out afterwards.
+- Account recovery with 3 security questions: **mandatory setup at first
+  run**, `fvault recovery setup|reset|disable|status`, and a "Forgot Master
+  Password?" flow on the login page (rate limited).
+- README: complete import/export reference, account recovery guide, and a
+  Docker section.
+
 ## Update 1.1.3
 
 05/11/2026 21:52

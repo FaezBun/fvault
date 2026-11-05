@@ -1,0 +1,18 @@
+# Keep the build context minimal: only Go sources, templates and static matter.
+.git
+.gitignore
+bin/
+data/
+dist/
+docs/
+scripts/
+*.md
+.env
+.env.*
+Dockerfile
+docker-compose.yml
+coverage*
+*.test
+.DS_Store
+.idea/
+.vscode/

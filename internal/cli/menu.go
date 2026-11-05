@@ -11,6 +11,7 @@ import (
 	"fvault/internal/clipboard"
 	"fvault/internal/config"
 	"fvault/internal/crypto"
+	"fvault/internal/recovery"
 	"fvault/internal/vault"
 	"fvault/internal/web"
 )
@@ -579,6 +580,13 @@ func (st *menuState) passwd() {
 	if err := st.v.Rekey(password, crypto.DefaultParams()); err != nil {
 		fmt.Println("Error:", err)
 		return
+	}
+	if recovery.Configured(st.p.Recovery) {
+		if err := recovery.Remove(st.p.Recovery); err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		fmt.Println("[i]  Security questions were cleared. Run 'fvault recovery setup' again to reconfigure.")
 	}
 	res, err := st.bm.Create(st.v.Path, "passwd")
 	if err != nil {

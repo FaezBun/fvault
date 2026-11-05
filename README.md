@@ -128,6 +128,30 @@ automatically) or `settings.json` (set it again with `fvault backup setup`).
 If a remote backup folder is configured, the snapshots are already stored
 there — the new computer can run `fvault backup restore latest` instead.
 
+## Account recovery
+
+fvault can reset a forgotten Master Password with **3 security questions**.
+
+- Setting them up is **mandatory during first run** (`fvault init` /
+  `fvault start`): you pick 3 questions and answer them before the menu
+  opens. To replace them later, run `fvault recovery setup` (the vault must
+  be unlocked).
+- Pick 3 questions from a fixed list of 16 and answer them. Invented,
+  passphrase-style answers are much stronger than real facts about you.
+- Answers are never stored as plain text: they wrap the vault's encryption
+  key (Argon2id + AES-GCM) in `data/recovery.json` (mode `0600`), outside the
+  vault itself.
+- Reset from the web (**Forgot Master Password?** on the login page) or from
+  the CLI with `fvault recovery reset`. Attempts are rate limited.
+- Changing the Master Password clears the questions for safety - run
+  `fvault recovery setup` again afterwards.
+- Remove them any time with `fvault recovery disable`; check with
+  `fvault recovery status`.
+
+> **Security note:** the answers are a second, weaker password. Anyone who
+> copies `recovery.json` and guesses your answers owns the vault, so treat the
+> answers like a passphrase - not like facts published on your social media.
+
 ## Web UI
 
 The web UI can be launched from the CLI menu, or directly:
@@ -138,6 +162,15 @@ fvault serve
 
 The server scans ports `8000-8099` by default. Log in with the username
 you chose during setup and your Master Password.
+
+Handy things on the login page and in the nav:
+
+- Click your **username** (top right) to change the Master Password. The whole
+  vault is re-encrypted and every session is logged out.
+- **Forgot Master Password?** on the login page resets it with your 3 security
+  answers (see [Account recovery](#account-recovery)).
+- A folder list with a **right-click menu** (open, new entry, rename, delete),
+  a tag cloud, live fuzzy search, and a password generator on the entry form.
 
 For production deployment behind a reverse proxy (e.g., nginx), use a fixed port:
 
@@ -153,6 +186,7 @@ Set `FVAULT_HOME` to change this location.
 ```text
 data/
   vault.json       encrypted vault (safe to back up)
+  recovery.json    wrapped security-question recovery key (optional, 0600)
   secret.key       web session secret (not the vault key)
   settings.json    backup configuration
   backups/         local snapshots
@@ -192,6 +226,14 @@ fvault folder add <name>
 fvault folder list
 fvault folder remove <name> [--force]
 fvault passwd
+fvault tag list
+fvault tag rename <old> <new>
+fvault tag delete <name>
+fvault kit
+fvault recovery setup
+fvault recovery reset
+fvault recovery disable
+fvault recovery status
 fvault import-md <file.md> [--folder NAME] [--dry-run] [--overwrite]
 fvault import-csv <file.csv> [--folder NAME] [--dry-run] [--overwrite]
 fvault export-csv <file.csv>
@@ -410,6 +452,32 @@ sudo cp scripts/fvault-backup.service scripts/fvault-backup.timer /etc/systemd/s
 sudo systemctl daemon-reload
 sudo systemctl enable --now fvault-backup.timer
 ```
+
+## Docker
+
+Run fvault in a container with a named volume for the data:
+
+```bash
+docker compose up -d          # build + start on port 17384
+```
+
+First run needs an interactive vault creation (the Master Password cannot be
+generated for you):
+
+```bash
+docker compose run --rm -it fvault init --username you
+docker compose up -d
+```
+
+Open `http://localhost:17384`, log in, and you are done. The image runs as a
+non-root user, exposes a `/healthz` endpoint, and stores everything in the
+`fvault-data` volume (`/data` inside the container).
+
+Notes:
+
+- Bind-mounting a host folder instead? Make it writable by the container user:
+  `chown -R 1000:1000 ./data`.
+- Behind HTTPS, set `FVAULT_COOKIE_SECURE=true` (see `docker-compose.yml`).
 
 ## Deployment
 

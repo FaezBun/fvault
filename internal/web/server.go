@@ -63,7 +63,9 @@ func Run(cfg Config) error {
 		cfg.StaticDir = "static"
 	}
 
-	tpl, err := template.ParseGlob(filepath.Join(cfg.TemplatesDir, "*.html"))
+	tpl, err := template.New("").Funcs(template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	}).ParseGlob(filepath.Join(cfg.TemplatesDir, "*.html"))
 	if err != nil {
 		return fmt.Errorf("could not load templates from %s: %w", cfg.TemplatesDir, err)
 	}
@@ -185,6 +187,8 @@ func (s *Server) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /login", s.handleLoginGet)
 	mux.HandleFunc("POST /login", s.handleLoginPost)
+	mux.HandleFunc("GET /forgot", s.handleForgotGet)
+	mux.HandleFunc("POST /forgot", s.handleForgotPost)
 	mux.HandleFunc("POST /logout", s.handleLogout)
 
 	mux.HandleFunc("GET /{$}", s.handleIndex)
@@ -199,8 +203,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /folder/new", s.auth(s.handleFolderCreate))
 	mux.HandleFunc("POST /folder/delete", s.auth(s.handleFolderDelete))
 	mux.HandleFunc("POST /folder/rename", s.auth(s.handleFolderRename))
+	mux.HandleFunc("GET /tags", s.auth(s.handleTags))
+	mux.HandleFunc("POST /tag/rename", s.auth(s.handleTagRename))
+	mux.HandleFunc("POST /tag/delete", s.auth(s.handleTagDelete))
 	mux.HandleFunc("GET /backup", s.auth(s.handleBackup))
 	mux.HandleFunc("POST /backup/export", s.auth(s.handleBackupExport))
+	mux.HandleFunc("GET /settings/password", s.auth(s.handlePasswordGet))
+	mux.HandleFunc("POST /settings/password", s.auth(s.handlePasswordPost))
 
 	static := http.FileServer(http.Dir(s.cfg.StaticDir))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -347,13 +356,21 @@ func (s *Server) currentSettings() config.Settings {
 }
 
 func (s *Server) writeVault(sess *session, reason string, fn func(*vault.Payload) error) (string, error) {
+	return s.writeVaultFull(sess, reason, func(v *vault.Vault) error {
+		return fn(v.Payload)
+	})
+}
+
+// writeVaultFull serialises a vault mutation that needs the *vault.Vault
+// itself (for example Rekey), then saves and takes a snapshot.
+func (s *Server) writeVaultFull(sess *session, reason string, fn func(*vault.Vault) error) (string, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	v, err := s.loadVault(sess)
 	if err != nil {
 		return "", err
 	}
-	if err := fn(v.Payload); err != nil {
+	if err := fn(v); err != nil {
 		return "", err
 	}
 	if err := v.Save(); err != nil {

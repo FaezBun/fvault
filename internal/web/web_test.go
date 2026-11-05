@@ -16,6 +16,7 @@ import (
 	"fvault/internal/config"
 	"fvault/internal/crypto"
 	"fvault/internal/ratelimit"
+	"fvault/internal/recovery"
 	"fvault/internal/vault"
 )
 
@@ -41,7 +42,9 @@ func newTestServer(t *testing.T) (*Server, *vault.Vault) {
 	if err := config.SaveSettings(p, settings); err != nil {
 		t.Fatalf("SaveSettings: %v", err)
 	}
-	tpl, err := template.ParseGlob(filepath.Join("..", "..", "templates", "*.html"))
+	tpl, err := template.New("").Funcs(template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	}).ParseGlob(filepath.Join("..", "..", "templates", "*.html"))
 	if err != nil {
 		t.Fatalf("ParseGlob: %v", err)
 	}
@@ -238,5 +241,169 @@ func TestLoginLockout(t *testing.T) {
 	}
 	if locked.Header.Get("Retry-After") == "" {
 		t.Fatal("missing Retry-After header")
+	}
+}
+
+func TestChangePassword(t *testing.T) {
+	s, _ := newTestServer(t)
+	ts := httptest.NewServer(s.routes())
+	defer ts.Close()
+	client := newClient(t)
+	noRedirect := &http.Client{
+		Jar:           client.Jar,
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
+	loginPage := get(t, client, ts.URL+"/login")
+	csrf := csrfFrom(t, loginPage)
+	resp := postForm(t, client, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"master-password"},
+	})
+	body := readBody(t, resp)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d: %s", resp.StatusCode, body)
+	}
+
+	// The change form is reachable from the nav username link.
+	formPage := get(t, client, ts.URL+"/settings/password")
+	if !strings.Contains(formPage, "Change Master Password") {
+		t.Fatalf("form page missing: %s", formPage)
+	}
+	csrf = csrfFrom(t, formPage)
+
+	// Wrong current password is rejected.
+	resp = postForm(t, noRedirect, ts.URL+"/settings/password", url.Values{
+		"csrf": {csrf}, "current": {"wrong"}, "new": {"brand-new-master-pass"}, "confirm": {"brand-new-master-pass"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || !strings.Contains(resp.Header.Get("Location"), "incorrect") {
+		t.Fatalf("wrong current password not rejected: %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	// Mismatched and short passwords are rejected.
+	resp = postForm(t, noRedirect, ts.URL+"/settings/password", url.Values{
+		"csrf": {csrf}, "current": {"master-password"}, "new": {"aaaaaaaa"}, "confirm": {"bbbbbbbb"},
+	})
+	resp.Body.Close()
+	if !strings.Contains(resp.Header.Get("Location"), "do+not+match") {
+		t.Fatalf("mismatch not rejected: %q", resp.Header.Get("Location"))
+	}
+	resp = postForm(t, noRedirect, ts.URL+"/settings/password", url.Values{
+		"csrf": {csrf}, "current": {"master-password"}, "new": {"short"}, "confirm": {"short"},
+	})
+	resp.Body.Close()
+	if !strings.Contains(resp.Header.Get("Location"), "at+least+8") {
+		t.Fatalf("short password not rejected: %q", resp.Header.Get("Location"))
+	}
+
+	// Success: redirected to the login page with a notice.
+	resp = postForm(t, noRedirect, ts.URL+"/settings/password", url.Values{
+		"csrf": {csrf}, "current": {"master-password"}, "new": {"brand-new-master-pass"}, "confirm": {"brand-new-master-pass"},
+	})
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(loc, "/login?notice=") {
+		t.Fatalf("success redirect = %d %q", resp.StatusCode, loc)
+	}
+
+	// All sessions were cleared: the vault page redirects to login again.
+	resp, err := noRedirect.Get(ts.URL + "/vault")
+	if err != nil {
+		t.Fatalf("GET /vault: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
+		t.Fatalf("vault after change = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	// The old password no longer works, the new one does.
+	loginPage = get(t, client, ts.URL+"/login")
+	csrf = csrfFrom(t, loginPage)
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"master-password"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old password status = %d, want 401", resp.StatusCode)
+	}
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"brand-new-master-pass"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/vault" {
+		t.Fatalf("new password login = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+}
+
+
+func TestForgotPassword(t *testing.T) {
+	s, v := newTestServer(t)
+	questions := []string{recovery.Questions[0], recovery.Questions[1], recovery.Questions[2]}
+	answers := []string{"Smith", "Fluffy", "Kuala Lumpur"}
+	if err := recovery.Setup(s.cfg.Paths.Recovery, questions, answers, v.Key); err != nil {
+		t.Fatalf("recovery.Setup: %v", err)
+	}
+	ts := httptest.NewServer(s.routes())
+	defer ts.Close()
+	client := newClient(t)
+	noRedirect := &http.Client{
+		Jar:           client.Jar,
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
+	// The forgot page shows the configured questions.
+	page := get(t, client, ts.URL+"/forgot")
+	if !strings.Contains(page, "maiden name") || !strings.Contains(page, "first pet") {
+		t.Fatalf("questions missing from forgot page: %s", page)
+	}
+	csrf := csrfFrom(t, page)
+
+	// Wrong answers are rejected and counted.
+	resp := postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
+		"csrf": {csrf},
+		"answer1": {"Wrong"}, "answer2": {"Wrong"}, "answer3": {"Wrong"},
+		"new": {"brand-new-pass-1"}, "confirm": {"brand-new-pass-1"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong answers status = %d, want 401", resp.StatusCode)
+	}
+
+	// Correct answers reset the password.
+	resp = postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
+		"csrf": {csrf},
+		"answer1": {"smith"}, "answer2": {"FLUFFY"}, "answer3": {"kuala   lumpur"},
+		"new": {"brand-new-pass-1"}, "confirm": {"brand-new-pass-1"},
+	})
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(loc, "/login?notice=") {
+		t.Fatalf("reset redirect = %d %q", resp.StatusCode, loc)
+	}
+
+	// Old password fails, new one logs in.
+	loginPage := get(t, client, ts.URL+"/login")
+	csrf = csrfFrom(t, loginPage)
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"master-password"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old password status = %d, want 401", resp.StatusCode)
+	}
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"brand-new-pass-1"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/vault" {
+		t.Fatalf("new password login = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	// The questions keep working with the new key (blob re-wrapped).
+	if _, err := recovery.OpenVaultKey(s.cfg.Paths.Recovery, answers); err != nil {
+		t.Fatalf("recovery after reset: %v", err)
 	}
 }

@@ -53,20 +53,22 @@ type backupPageData struct {
 }
 
 type pageData struct {
-	Title    string
-	LoggedIn bool
-	Username string
-	CSRF     string
-	Notice   string
-	Error    string
-	Query    string
-	Folder   string
-	Tag      string
-	Sort     string
-	Folders  []folderView
-	Entries  []vault.EntryView
-	Entry    entryFormData
-	Backup   backupPageData
+	Title             string
+	LoggedIn          bool
+	Username          string
+	CSRF              string
+	Notice            string
+	Error             string
+	Query             string
+	Folder            string
+	Tag               string
+	Sort              string
+	RecoveryQuestions []string
+	Folders           []folderView
+	Entries           []vault.EntryView
+	Tags              []vault.TagCount
+	Entry             entryFormData
+	Backup            backupPageData
 }
 
 func (s *Server) baseData(sess *session) pageData {
@@ -116,6 +118,7 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 	}
 	data := s.baseData(sess)
 	data.Title = "Login"
+	data.Notice = r.URL.Query().Get("notice")
 	data.Error = r.URL.Query().Get("error")
 	s.render(w, "login.html", http.StatusOK, data)
 }
@@ -228,6 +231,7 @@ func (s *Server) handleVault(w http.ResponseWriter, r *http.Request, sess *sessi
 			Active: name == folder,
 		})
 	}
+	data.Tags = v.Payload.TagCounts()
 	switch {
 	case q != "":
 		data.Entries = v.Payload.Search(q, folder)
@@ -592,6 +596,74 @@ func (s *Server) handleFolderRename(w http.ResponseWriter, r *http.Request, sess
 	redirectWith(w, r, "/vault", map[string]string{
 		"folder": newName,
 		"notice": withWarning("Folder renamed.", warning),
+	})
+}
+
+// handleTags renders the tag management page.
+func (s *Server) handleTags(w http.ResponseWriter, r *http.Request, sess *session) {
+	v, err := s.loadVault(sess)
+	if err != nil {
+		s.invalidateAndLogin(w, r, sess, "Your session has expired. Please log in again.")
+		return
+	}
+	data := s.baseData(sess)
+	data.Title = "Tags"
+	data.Notice = r.URL.Query().Get("notice")
+	data.Error = r.URL.Query().Get("error")
+	data.Tags = v.Payload.TagCounts()
+	s.render(w, "tags.html", http.StatusOK, data)
+}
+
+// tagErrorMessage maps tag errors to a friendly flash message.
+func tagErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, vault.ErrNotFound):
+		return "Tag not found."
+	case errors.Is(err, vault.ErrInvalidTag):
+		return "Invalid tag name. Use letters, numbers, dot, dash or underscore (max 32)."
+	default:
+		return "Could not update tags."
+	}
+}
+
+// handleTagRename renames a tag on every entry.
+func (s *Server) handleTagRename(w http.ResponseWriter, r *http.Request, sess *session) {
+	oldName := strings.TrimSpace(r.FormValue("old"))
+	newName := strings.TrimSpace(r.FormValue("name"))
+	if oldName == "" || newName == "" {
+		redirectWith(w, r, "/tags", map[string]string{"error": "Both tag names are required."})
+		return
+	}
+	warning, err := s.writeVault(sess, "tag-rename", func(p *vault.Payload) error {
+		_, err := p.RenameTag(oldName, newName)
+		return err
+	})
+	if err != nil {
+		redirectWith(w, r, "/tags", map[string]string{"error": tagErrorMessage(err)})
+		return
+	}
+	redirectWith(w, r, "/tags", map[string]string{
+		"notice": withWarning("Tag renamed.", warning),
+	})
+}
+
+// handleTagDelete removes a tag from every entry.
+func (s *Server) handleTagDelete(w http.ResponseWriter, r *http.Request, sess *session) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		redirectWith(w, r, "/tags", map[string]string{"error": "Tag name is required."})
+		return
+	}
+	warning, err := s.writeVault(sess, "tag-delete", func(p *vault.Payload) error {
+		_, err := p.DeleteTag(name)
+		return err
+	})
+	if err != nil {
+		redirectWith(w, r, "/tags", map[string]string{"error": tagErrorMessage(err)})
+		return
+	}
+	redirectWith(w, r, "/tags", map[string]string{
+		"notice": withWarning("Tag removed from every entry.", warning),
 	})
 }
 

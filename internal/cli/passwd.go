@@ -7,6 +7,7 @@ import (
 
 	"fvault/internal/backup"
 	"fvault/internal/crypto"
+	"fvault/internal/recovery"
 	"fvault/internal/vault"
 )
 
@@ -40,10 +41,16 @@ func newPasswdCmd() *cobra.Command {
 			if _, err := bm.Create(v.Path, "pre-passwd"); err != nil {
 				fmt.Printf("[WARN] Could not create a pre-change snapshot: %v\n", err)
 			}
+			v.Payload.RecordAudit("vault.rekey", "", "master password changed")
 			if err := v.Rekey(newPassword, crypto.DefaultParams()); err != nil {
 				return err
 			}
-			v.Payload.RecordAudit("vault.rekey", "", "master password changed")
+			if recovery.Configured(p.Recovery) {
+				if err := recovery.Remove(p.Recovery); err != nil {
+					return err
+				}
+				fmt.Println("[i]  Security questions were cleared. Run 'fvault recovery setup' again to reconfigure.")
+			}
 			res, err := bm.Create(v.Path, "passwd")
 			if err != nil {
 				return err

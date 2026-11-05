@@ -14,6 +14,15 @@
       </li>
       {{end}}
     </ul>
+    {{if .Tags}}
+    <h2>Tags</h2>
+    <div class="tag-cloud">
+      {{range .Tags}}
+      <a class="tag{{if eq $.Tag .Name}} active{{end}}" href="/vault?{{if $.Folder}}folder={{$.Folder}}&{{end}}{{if $.Query}}q={{$.Query}}&{{end}}tag={{.Name}}{{if $.Sort}}&sort={{$.Sort}}{{end}}">{{.Name}} <span class="count">{{.Count}}</span></a>
+      {{end}}
+    </div>
+    <p><a class="link small" href="/tags">Manage tags</a></p>
+    {{end}}
     <form method="post" action="/folder/new" class="stack">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <label class="small-label">New folder

@@ -101,6 +101,14 @@ func (s *sessionStore) Delete(id string) {
 	s.mu.Unlock()
 }
 
+// Clear removes every session. Used after the Master Password changes so no
+// session keeps a stale vault key.
+func (s *sessionStore) Clear() {
+	s.mu.Lock()
+	s.m = map[string]*session{}
+	s.mu.Unlock()
+}
+
 func (s *sessionStore) Cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

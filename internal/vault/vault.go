@@ -28,6 +28,7 @@ var (
 	ErrFolderNotEmpty     = errors.New("folder is not empty")
 	ErrDefaultFolder      = errors.New("the default folder cannot be removed")
 	ErrInvalidName        = errors.New("invalid name: use letters, numbers, dot, dash or underscore (max 64)")
+	ErrInvalidTag         = errors.New("invalid tag: use letters, numbers, dot, dash or underscore (max 32)")
 	ErrUnsupportedVersion = errors.New("unsupported vault version")
 	nameRE                = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 )
@@ -642,6 +643,119 @@ func (p *Payload) RemoveFolder(name string, force bool) error {
 	delete(p.Folders, name)
 	p.recordAudit("folder.remove", name, "")
 	return nil
+}
+
+// TagCount pairs a tag with the number of entries that use it.
+type TagCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// TagCounts returns every tag with its usage count, most used first.
+func (p *Payload) TagCounts() []TagCount {
+	counts := map[string]int{}
+	for _, folder := range p.Folders {
+		for _, entry := range folder.Entries {
+			for _, tag := range entry.Tags {
+				counts[tag]++
+			}
+		}
+	}
+	out := make([]TagCount, 0, len(counts))
+	for name, count := range counts {
+		out = append(out, TagCount{Name: name, Count: count})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// eachTagEntry runs fn on every entry carrying the tag and returns how many
+// entries were found and changed.
+func (p *Payload) eachTagEntry(tag string, fn func(*Entry)) (changed int, found bool) {
+	for _, folder := range p.Folders {
+		for name, entry := range folder.Entries {
+			has := false
+			for _, t := range entry.Tags {
+				if t == tag {
+					has = true
+					break
+				}
+			}
+			if !has {
+				continue
+			}
+			found = true
+			fn(&entry)
+			folder.Entries[name] = entry
+			changed++
+		}
+	}
+	return changed, found
+}
+
+// RenameTag applies a tag rename to every entry and returns the number of
+// entries that changed.
+func (p *Payload) RenameTag(oldName, newName string) (int, error) {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if !tagRE.MatchString(oldName) || !tagRE.MatchString(newName) {
+		return 0, ErrInvalidTag
+	}
+	if oldName == newName {
+		return 0, nil
+	}
+	changed, found := p.eachTagEntry(oldName, func(entry *Entry) {
+		tags := make([]string, 0, len(entry.Tags))
+		for _, tag := range entry.Tags {
+			if tag == oldName {
+				tag = newName
+			}
+			dup := false
+			for _, existing := range tags {
+				if existing == tag {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				tags = append(tags, tag)
+			}
+		}
+		entry.Tags = normalizeTags(tags)
+	})
+	if !found {
+		return 0, ErrNotFound
+	}
+	p.recordAudit("tag.rename", oldName+" -> "+newName, fmt.Sprintf("%d entries", changed))
+	return changed, nil
+}
+
+// DeleteTag removes a tag from every entry and returns the number of entries
+// that changed.
+func (p *Payload) DeleteTag(name string) (int, error) {
+	name = strings.TrimSpace(name)
+	if !tagRE.MatchString(name) {
+		return 0, ErrInvalidTag
+	}
+	changed, found := p.eachTagEntry(name, func(entry *Entry) {
+		tags := make([]string, 0, len(entry.Tags))
+		for _, tag := range entry.Tags {
+			if tag != name {
+				tags = append(tags, tag)
+			}
+		}
+		entry.Tags = normalizeTags(tags)
+	})
+	if !found {
+		return 0, ErrNotFound
+	}
+	p.recordAudit("tag.delete", name, fmt.Sprintf("%d entries", changed))
+	return changed, nil
 }
 
 func (p *Payload) List() []EntryView {

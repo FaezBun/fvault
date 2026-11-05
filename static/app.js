@@ -272,6 +272,64 @@
     }
   });
 
+  (function passwordGenerator() {
+    var button = document.getElementById("generate-password");
+    if (!button) return;
+    var input = document.getElementById("entry-password");
+    var symbolsBox = document.getElementById("gen-symbols");
+    var lengthInput = document.getElementById("gen-length");
+    var status = document.getElementById("gen-status");
+    if (!input) return;
+
+    var LOWER = "abcdefghijkmnopqrstuvwxyz"; // no l
+    var UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // no I, O
+    var DIGITS = "23456789";                 // no 0, 1
+    var SYMBOLS = "!@#$%^&*()-_=+[]{}:,.?";
+
+    function randomBelow(n) {
+      if (n <= 1) return 0;
+      var limit = Math.floor(4294967296 / n) * n;
+      var buf = new Uint32Array(1);
+      for (;;) {
+        crypto.getRandomValues(buf);
+        if (buf[0] < limit) return buf[0] % n;
+      }
+    }
+
+    function randomFrom(charset) {
+      return charset.charAt(randomBelow(charset.length));
+    }
+
+    function generate() {
+      var length = parseInt(lengthInput && lengthInput.value, 10);
+      if (!length || isNaN(length)) length = 20;
+      if (length < 6) length = 6;
+      if (length > 128) length = 128;
+      if (lengthInput && parseInt(lengthInput.value, 10) !== length) lengthInput.value = length;
+
+      var groups = [LOWER, UPPER, DIGITS];
+      if (symbolsBox && symbolsBox.checked) groups.push(SYMBOLS);
+      var all = groups.join("");
+
+      var chars = [];
+      groups.forEach(function (group) { chars.push(randomFrom(group)); });
+      while (chars.length < length) chars.push(randomFrom(all));
+      // Fisher-Yates shuffle with the same crypto source.
+      for (var i = chars.length - 1; i > 0; i--) {
+        var j = randomBelow(i + 1);
+        var tmp = chars[i]; chars[i] = chars[j]; chars[j] = tmp;
+      }
+      return chars.slice(0, length).join("");
+    }
+
+    button.addEventListener("click", function () {
+      var pw = generate();
+      input.value = pw;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      if (status) status.textContent = "Generated " + pw.length + " characters.";
+    });
+  })();
+
 
   (function folderContextMenu() {
     var menu = document.getElementById("folder-menu");

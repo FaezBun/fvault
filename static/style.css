@@ -74,6 +74,8 @@ p { margin: .35rem 0 .8rem; }
   background: var(--surface-2);
   border-radius: 999px;
 }
+a.user { color: var(--muted); }
+a.user:hover { color: var(--text); text-decoration: none; }
 
 .inline { display: inline; margin: 0; }
 
@@ -182,6 +184,11 @@ textarea { resize: vertical; }
 .password-toggle svg { width: 1rem; height: 1rem; pointer-events: none; }
 .checkbox { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
 .checkbox input { width: auto; margin: 0; }
+.gen-row { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-top: .5rem; }
+.gen-row .checkbox { font-size: .87rem; }
+.gen-length { display: flex; align-items: center; gap: .4rem; font-size: .87rem; color: var(--muted); }
+.gen-length input { width: 4.6rem; padding: .2rem .35rem; margin: 0; }
+.gen-status { font-size: .8rem; }
 
 
 .form-actions { display: flex; gap: .6rem; align-items: center; margin-top: .5rem; }
@@ -279,6 +286,12 @@ textarea { resize: vertical; }
 }
 .tags { display: flex; flex-wrap: wrap; gap: .25rem; }
 .tags .tag { margin: 0; }
+.tag-cloud { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .5rem; }
+.tag-cloud .tag:hover { color: var(--text); border-color: var(--accent); }
+.tag-cloud .tag.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-dark); }
+.row-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; }
+.row-actions input[type="text"] { width: 10rem; margin: 0; padding: .3rem .45rem; font-size: .85rem; }
+.row-actions button { font-size: .85rem; padding: .3rem .6rem; }
 .chip {
   padding: .28rem .55rem;
   font-size: .78rem;

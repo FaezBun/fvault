@@ -1,0 +1,42 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  {{template "flash" .}}
+  <div class="content-head">
+    <div>
+      <h1>Forgot Master Password</h1>
+      <p class="muted">Answer your 3 security questions to set a new Master Password. Attempts are rate limited.</p>
+    </div>
+    <a class="button" href="/login">Back to login</a>
+  </div>
+
+  {{if .RecoveryQuestions}}
+  <form method="post" action="/forgot" class="stack card" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range $i, $q := .RecoveryQuestions}}
+    <label>Answer {{add $i 1}} &middot; {{$q}}
+      <input type="text" name="answer{{add $i 1}}" autocomplete="off" required minlength="4">
+    </label>
+    {{end}}
+    <label>New Master Password
+      <input type="password" name="new" autocomplete="new-password" required>
+    </label>
+    <label>Confirm New Master Password
+      <input type="password" name="confirm" autocomplete="new-password" required>
+    </label>
+    <span class="hint">At least 8 characters; 12+ is recommended. Your security questions keep working afterwards.</span>
+    <div class="form-actions">
+      <button type="submit" class="primary">Reset password</button>
+      <a class="button" href="/login">Cancel</a>
+    </div>
+  </form>
+  {{else}}
+  <section class="card">
+    <p class="muted">Recovery is not configured. From the CLI, run <code>fvault recovery setup</code> after unlocking your vault.</p>
+    <div class="form-actions">
+      <a class="button" href="/login">Back to login</a>
+    </div>
+  </section>
+  {{end}}
+</main>
+{{template "foot" .}}

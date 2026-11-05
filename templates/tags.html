@@ -1,0 +1,50 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  {{template "flash" .}}
+  <div class="content-head">
+    <div>
+      <h1>Tags</h1>
+      <p class="muted">{{len .Tags}} tag{{if ne (len .Tags) 1}}s{{end}} used across your entries</p>
+    </div>
+    <a class="button" href="/vault">Back to vault</a>
+  </div>
+
+  <section class="card">
+    {{if .Tags}}
+    <table class="entries">
+      <thead>
+        <tr>
+          <th>Tag</th>
+          <th>Used by</th>
+          <th class="row-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Tags}}
+        <tr>
+          <td><a class="tag" href="/vault?tag={{.Name}}">{{.Name}}</a></td>
+          <td>{{.Count}} entr{{if eq .Count 1}}y{{else}}ies{{end}}</td>
+          <td class="row-actions">
+            <form method="post" action="/tag/rename" class="inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="old" value="{{.Name}}">
+              <input type="text" name="name" value="{{.Name}}" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,31}" required aria-label="New name for {{.Name}}">
+              <button type="submit">Rename</button>
+            </form>
+            <form method="post" action="/tag/delete" class="inline" data-confirm="Remove tag '{{.Name}}' from every entry?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.Name}}">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted">No tags yet. Add tags when creating or editing an entry, then filter and manage them here.</p>
+    {{end}}
+  </section>
+</main>
+{{template "foot" .}}

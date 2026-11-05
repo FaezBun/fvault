@@ -47,7 +47,8 @@ func newInitCmd() *cobra.Command {
 			if _, err := config.EnsureSecret(p.Secret); err != nil {
 				return err
 			}
-			if _, err := vault.Create(p.Vault, password, username, crypto.DefaultParams()); err != nil {
+			v, err := vault.Create(p.Vault, password, username, crypto.DefaultParams())
+			if err != nil {
 				return err
 			}
 
@@ -68,6 +69,8 @@ func newInitCmd() *cobra.Command {
 			fmt.Printf("[OK] Secret   : %s\n", p.Secret)
 			fmt.Printf("[OK] Settings : %s\n", p.Settings)
 			fmt.Println("[i]  Master Password is NOT stored. Do not forget it.")
+			offerRecoverySetup(p, v)
+			printEmergencyKit(p, username, true)
 			return nil
 		},
 	}

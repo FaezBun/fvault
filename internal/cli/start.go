@@ -71,6 +71,8 @@ func newStartCmd() *cobra.Command {
 					fmt.Printf("[WARN] %s\n", warning)
 				}
 				fmt.Println("[i]  Master Password is NOT stored. Do not forget it.")
+				offerRecoverySetup(p, v)
+				printEmergencyKit(p, username, true)
 				fmt.Println()
 			} else if statErr != nil {
 				return statErr
