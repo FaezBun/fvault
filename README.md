@@ -302,8 +302,8 @@ Simplest format — one `Name : Password` per line, no headings or key lines
 needed:
 
 ```markdown
-Supervisor : WFS670303
-Student Portal (Degree) : UiTM@Jasin787
+Supervisor : kalimantan123
+Student Portal (Degree) : yoyoyo@nama12333333
 Steam : my-steam-password
 ```
 
