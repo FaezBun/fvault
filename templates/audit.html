@@ -1,0 +1,58 @@
+{{template "head" .}}
+{{template "nav" .}}
+<main class="narrow">
+  {{template "flash" .}}
+  <div class="content-head">
+    <div>
+      <h1>Password audit</h1>
+      <p class="muted">Checked {{.Health.Total}} entries. Password values are never shown on this page.</p>
+    </div>
+    <a class="button" href="/vault">Back to vault</a>
+  </div>
+
+  <div class="status-grid">
+    <div class="status">
+      <span class="status-label">Weak</span>
+      <strong>{{.Health.Weak}}</strong>
+    </div>
+    <div class="status">
+      <span class="status-label">Reused</span>
+      <strong>{{.Health.Reused}}</strong>
+    </div>
+    <div class="status">
+      <span class="status-label">Old (over a year)</span>
+      <strong>{{.Health.Old}}</strong>
+    </div>
+  </div>
+
+  {{if .Health.Issues}}
+  <section class="card">
+    <table class="entries">
+      <thead>
+        <tr>
+          <th>Entry</th>
+          <th>Problem</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Health.Issues}}
+        <tr>
+          <td><a href="/entry?folder={{.Folder}}&name={{.Name}}">{{.Folder}}/{{.Name}}</a></td>
+          <td><span class="tag">{{.Reason}}</span></td>
+          <td class="muted">{{.Detail}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </section>
+  {{else}}
+  <section class="card">
+    <p class="muted">No issues found - every password is strong, unique, and fresh.</p>
+    <div class="form-actions">
+      <a class="button" href="/vault">Back to vault</a>
+    </div>
+  </section>
+  {{end}}
+</main>
+{{template "foot" .}}

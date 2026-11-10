@@ -1,5 +1,24 @@
 # fvault Version History
 
+## Update 1.1.5
+
+11/11/2026 00:23
+
+### Changes
+
+- MIT LICENSE and README badges.
+- Password health audit: `fvault audit` CLI command and an `/audit` web page
+  reporting weak, reused, and older-than-a-year passwords (values never shown).
+- Bulk actions in the web vault: select many entries, then move them to a
+  folder or delete them in one go (CSRF protected, per-entry audit).
+- Browser password imports: Chrome, Edge, Firefox, and KeePassXC CSV exports
+  work directly (auto-detected comma/semicolon/tab delimiter).
+- Forgot Master Password page now offers two credentials: security answers
+  (any **2 of 3** must be correct - one is never enough) or an optional
+  **recovery key** (`fvault recovery key`, a random 128-bit key shown once).
+- Whichever credential you reset with survives; the other is cleared with a
+  clear on-screen notice.
+
 ## Update 1.1.4
 
 06/11/2026 01:04

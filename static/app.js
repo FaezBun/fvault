@@ -331,6 +331,55 @@
   })();
 
 
+  (function bulkActions() {
+    var bar = document.getElementById("bulk-bar");
+    if (!bar) return;
+    var all = document.getElementById("bulk-all");
+    var count = document.getElementById("bulk-count");
+    var checks = Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));
+    var moveForm = document.getElementById("bulk-move-form");
+    var deleteForm = document.getElementById("bulk-delete-form");
+    var folderSelect = document.getElementById("bulk-folder");
+
+    function selected() {
+      return checks.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+    }
+    function sync() {
+      var n = selected().length;
+      bar.hidden = n === 0;
+      count.textContent = n + " selected";
+      if (all) all.checked = n > 0 && n === checks.length;
+    }
+    checks.forEach(function (c) { c.addEventListener("change", sync); });
+    if (all) {
+      all.addEventListener("change", function () {
+        checks.forEach(function (c) { c.checked = all.checked; });
+        sync();
+      });
+    }
+    var moveBtn = document.getElementById("bulk-move");
+    if (moveBtn) {
+      moveBtn.addEventListener("click", function () {
+        var names = selected();
+        if (!names.length || !moveForm || !folderSelect) return;
+        document.getElementById("bulk-move-folder").value = folderSelect.value;
+        document.getElementById("bulk-move-names").value = names.join(",");
+        moveForm.submit();
+      });
+    }
+    var delBtn = document.getElementById("bulk-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", function () {
+        var names = selected();
+        if (!names.length || !deleteForm) return;
+        if (!window.confirm("Delete " + names.length + " selected entries? This cannot be undone.")) return;
+        document.getElementById("bulk-delete-names").value = names.join(",");
+        deleteForm.submit();
+      });
+    }
+    sync();
+  })();
+
   (function folderContextMenu() {
     var menu = document.getElementById("folder-menu");
     var sidebar = document.querySelector(".sidebar[data-csrf]");

@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -8,12 +9,39 @@ import (
 	"strings"
 )
 
-// ParseCSV reads a CSV file with a header row. It only needs a name column
-// (name, title, label, entry or item — or a username column as a fallback) and
-// a password column (password or pass). Optional columns: folder, username,
-// tags, pinned. Extra columns are ignored.
+// sniffDelimiter inspects the header line and returns the delimiter that
+// appears most often (comma, semicolon, or tab). Browser password exports
+// mix these depending on locale.
+func sniffDelimiter(data []byte) rune {
+	first := data
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		first = data[:i]
+	}
+	commas := bytes.Count(first, []byte{','})
+	semicolons := bytes.Count(first, []byte{';'})
+	tabs := bytes.Count(first, []byte{'\t'})
+	switch {
+	case semicolons > commas && semicolons >= tabs:
+		return ';'
+	case tabs > commas && tabs > semicolons:
+		return '\t'
+	default:
+		return ','
+	}
+}
+
+// ParseCSV reads a CSV file with a header row. Required column: name (or a
+// username column used as the name) and a password column. The delimiter is
+// auto-detected (comma, semicolon, or tab) so exports from Chrome, Firefox,
+// Edge, and KeePassXC work as-is. Optional columns: folder, username, tags,
+// pinned. Extra columns are ignored.
 func ParseCSV(r io.Reader) ([]Entry, []Warning, error) {
-	reader := csv.NewReader(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	reader := csv.NewReader(bytes.NewReader(data))
+	reader.Comma = sniffDelimiter(data)
 	reader.FieldsPerRecord = -1
 	rows, err := reader.ReadAll()
 	if err != nil {

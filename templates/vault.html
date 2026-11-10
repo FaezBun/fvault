@@ -58,10 +58,20 @@
       {{if .Query}}<a class="link" href="/vault{{if .Folder}}?folder={{.Folder}}{{end}}">Clear</a>{{end}}
     </form>
 
+    <div class="bulk-bar" id="bulk-bar" hidden>
+      <span id="bulk-count">0 selected</span>
+      <select id="bulk-folder" aria-label="Move selected entries to folder">
+        {{range .Folders}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+      </select>
+      <button type="button" class="chip" id="bulk-move">Move</button>
+      <button type="button" class="chip danger" id="bulk-delete">Delete</button>
+    </div>
+
     <div class="card table-card">
       <table class="entries">
         <thead>
           <tr>
+            <th class="col-check"><input type="checkbox" id="bulk-all" aria-label="Select all entries"></th>
             <th>Name</th>
             <th>Folder</th>
             <th>Username</th>
@@ -73,6 +83,7 @@
         <tbody>
           {{range .Entries}}
           <tr>
+            <td class="col-check"><input type="checkbox" class="bulk-check" value="{{.Folder}}/{{.Name}}" aria-label="Select {{.Folder}}/{{.Name}}"></td>
             <td><a href="/entry?folder={{.Folder}}&name={{.Name}}">{{.Name}}</a></td>
             <td><span class="tag">{{.Folder}}</span></td>
             <td class="mono">{{if .Username}}{{.Username}}{{else}}<span class="muted">&mdash;</span>{{end}}</td>
@@ -83,11 +94,21 @@
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="6" class="empty">No entries yet. Use <strong>New entry</strong> to add your first one.</td></tr>
+          <tr><td colspan="7" class="empty">No entries yet. Use <strong>New entry</strong> to add your first one.</td></tr>
           {{end}}
         </tbody>
       </table>
     </div>
+
+    <form method="post" action="/entries/move" id="bulk-move-form" hidden>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="folder" id="bulk-move-folder">
+      <input type="hidden" name="names" id="bulk-move-names">
+    </form>
+    <form method="post" action="/entries/delete" id="bulk-delete-form" hidden>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="names" id="bulk-delete-names">
+    </form>
   </section>
   <div id="folder-menu" class="context-menu" hidden>
     <button type="button" data-action="open">Open folder</button>

@@ -36,8 +36,12 @@ func TestRecoverySetupAndResetRoundtrip(t *testing.T) {
 	}
 
 	// Reset with the answers and a new password.
-	if err := applyRecoveryReset(p, answers, "new-master-pass-1"); err != nil {
+	keyCleared, err := applyRecoveryReset(p, answers, "new-master-pass-1")
+	if err != nil {
 		t.Fatalf("applyRecoveryReset: %v", err)
+	}
+	if keyCleared {
+		t.Fatal("no recovery key was configured, nothing should be cleared")
 	}
 
 	// Old password is gone, new one works.
@@ -71,7 +75,90 @@ func TestRecoverySetupAndResetRoundtrip(t *testing.T) {
 
 func TestRecoveryResetWithoutSetup(t *testing.T) {
 	p, _ := recoveryFixture(t)
-	if err := applyRecoveryReset(p, []string{"a", "b", "c"}, "whatever123"); !errors.Is(err, recovery.ErrNotConfigured) {
+	if _, err := applyRecoveryReset(p, []string{"a", "b", "c"}, "whatever123"); !errors.Is(err, recovery.ErrNotConfigured) {
 		t.Fatalf("err = %v, want ErrNotConfigured", err)
 	}
+}
+
+func TestAnswerResetClearsRecoveryKey(t *testing.T) {
+	p, v := recoveryFixture(t)
+	questions := []string{recovery.Questions[0], recovery.Questions[1], recovery.Questions[2]}
+	answers := []string{"Smith", "Fluffy", "Kuala Lumpur"}
+	if err := applyRecoverySetup(p, questions, answers, v); err != nil {
+		t.Fatalf("applyRecoverySetup: %v", err)
+	}
+	if _, err := recovery.SetupKey(p.Recovery, v.Key); err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	keyCleared, err := applyRecoveryReset(p, answers, "new-master-pass-2")
+	if err != nil {
+		t.Fatalf("applyRecoveryReset: %v", err)
+	}
+	if !keyCleared {
+		t.Fatal("recovery key should have been cleared")
+	}
+	if recovery.HasKey(p.Recovery) {
+		t.Fatal("recovery key still configured")
+	}
+	// Questions must survive the answer reset.
+	if _, err := recovery.QuestionsFor(p.Recovery); err != nil {
+		t.Fatalf("questions lost: %v", err)
+	}
+}
+
+func TestKeyResetClearsQuestions(t *testing.T) {
+	p, v := recoveryFixture(t)
+	questions := []string{recovery.Questions[0], recovery.Questions[1], recovery.Questions[2]}
+	answers := []string{"Smith", "Fluffy", "Kuala Lumpur"}
+	if err := applyRecoverySetup(p, questions, answers, v); err != nil {
+		t.Fatalf("applyRecoverySetup: %v", err)
+	}
+	key, err := recovery.SetupKey(p.Recovery, v.Key)
+	if err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	// The key must keep working after a question-based reset? No: the answer
+	// reset clears it, so generate a fresh key to test the key reset path.
+	keyCleared, err := applyRecoveryReset(p, answers, "temp-pass-1234")
+	if err != nil || !keyCleared {
+		t.Fatalf("answer reset: cleared=%v err=%v", keyCleared, err)
+	}
+	key, err = recovery.SetupKey(p.Recovery, mustOpenKey(t, p, "temp-pass-1234"))
+	if err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	questionsCleared, err := applyRecoveryResetWithKey(p, key, "final-pass-1234")
+	if err != nil {
+		t.Fatalf("applyRecoveryResetWithKey: %v", err)
+	}
+	if !questionsCleared {
+		t.Fatal("questions should have been cleared")
+	}
+	if _, err := recovery.QuestionsFor(p.Recovery); !errors.Is(err, recovery.ErrNotConfigured) {
+		t.Fatalf("questions still configured: %v", err)
+	}
+	if !recovery.HasKey(p.Recovery) {
+		t.Fatal("recovery key should survive its own reset")
+	}
+	// The key still opens the vault after the re-wrap.
+	if _, err := recovery.OpenVaultKeyWithRecoveryKey(p.Recovery, key); err != nil {
+		t.Fatalf("key after reset: %v", err)
+	}
+	// Old password is gone, new one works.
+	if _, err := vault.Open(p.Vault, "temp-pass-1234"); err == nil {
+		t.Fatal("old password must not open the vault")
+	}
+	if _, err := vault.Open(p.Vault, "final-pass-1234"); err != nil {
+		t.Fatalf("new password: %v", err)
+	}
+}
+
+// mustOpenKey returns the current vault key by opening it with password.
+func mustOpenKey(t *testing.T, p config.Paths, password string) []byte {
+	t.Helper()
+	v, err := vault.Open(p.Vault, password)
+	if err != nil {
+		t.Fatalf("open vault: %v", err)
+	}
+	return v.Key
 }

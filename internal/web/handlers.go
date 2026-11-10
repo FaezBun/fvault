@@ -64,6 +64,9 @@ type pageData struct {
 	Tag               string
 	Sort              string
 	RecoveryQuestions []string
+	ForgotMode        string
+	RecoveryHasKey    bool
+	Health            *vault.HealthReport
 	Folders           []folderView
 	Entries           []vault.EntryView
 	Tags              []vault.TagCount
@@ -664,6 +667,115 @@ func (s *Server) handleTagDelete(w http.ResponseWriter, r *http.Request, sess *s
 	}
 	redirectWith(w, r, "/tags", map[string]string{
 		"notice": withWarning("Tag removed from every entry.", warning),
+	})
+}
+
+// handleAudit renders the password health report.
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, sess *session) {
+	v, err := s.loadVault(sess)
+	if err != nil {
+		s.invalidateAndLogin(w, r, sess, "Your session has expired. Please log in again.")
+		return
+	}
+	report := v.Payload.HealthReport()
+	data := s.baseData(sess)
+	data.Title = "Audit"
+	data.Health = &report
+	s.render(w, "audit.html", http.StatusOK, data)
+}
+
+// parseBulkRefs splits "folder/name" pairs sent by the bulk toolbar.
+func parseBulkRefs(raw string) ([]struct{ folder, name string }, error) {
+	var out []struct{ folder, name string }
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		folder, name, ok := strings.Cut(part, "/")
+		if !ok {
+			return nil, fmt.Errorf("invalid entry reference %q", part)
+		}
+		if vault.ValidateName(folder) != nil || vault.ValidateName(name) != nil {
+			return nil, fmt.Errorf("invalid entry reference %q", part)
+		}
+		out = append(out, struct{ folder, name string }{folder: folder, name: name})
+	}
+	return out, nil
+}
+
+// handleEntriesBulkMove moves the selected entries into one folder.
+func (s *Server) handleEntriesBulkMove(w http.ResponseWriter, r *http.Request, sess *session) {
+	if !s.requireCSRF(w, r, sess) {
+		return
+	}
+	target := strings.TrimSpace(r.FormValue("folder"))
+	if vault.ValidateName(target) != nil {
+		redirectWith(w, r, "/vault", map[string]string{"error": "Invalid folder name."})
+		return
+	}
+	refs, err := parseBulkRefs(r.FormValue("names"))
+	if err != nil {
+		redirectWith(w, r, "/vault", map[string]string{"error": err.Error()})
+		return
+	}
+	if len(refs) == 0 {
+		redirectWith(w, r, "/vault", map[string]string{"error": "No entries selected."})
+		return
+	}
+	warning, err := s.writeVault(sess, "entries-move", func(p *vault.Payload) error {
+		for _, ref := range refs {
+			entry, ok := p.GetEntry(ref.folder, ref.name)
+			if !ok {
+				return fmt.Errorf("entry %s/%s not found", ref.folder, ref.name)
+			}
+			if ref.folder == target {
+				continue
+			}
+			if err := p.MoveEntry(ref.folder, target, ref.name, entry); err != nil {
+				return fmt.Errorf("could not move %s/%s: %w", ref.folder, ref.name, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		redirectWith(w, r, "/vault", map[string]string{"error": err.Error()})
+		return
+	}
+	redirectWith(w, r, "/vault", map[string]string{
+		"folder": target,
+		"notice": withWarning(fmt.Sprintf("Moved %d entries to '%s'.", len(refs), target), warning),
+	})
+}
+
+// handleEntriesBulkDelete removes the selected entries.
+func (s *Server) handleEntriesBulkDelete(w http.ResponseWriter, r *http.Request, sess *session) {
+	if !s.requireCSRF(w, r, sess) {
+		return
+	}
+	refs, err := parseBulkRefs(r.FormValue("names"))
+	if err != nil {
+		redirectWith(w, r, "/vault", map[string]string{"error": err.Error()})
+		return
+	}
+	if len(refs) == 0 {
+		redirectWith(w, r, "/vault", map[string]string{"error": "No entries selected."})
+		return
+	}
+	warning, err := s.writeVault(sess, "entries-delete", func(p *vault.Payload) error {
+		for _, ref := range refs {
+			if err := p.RemoveEntry(ref.folder, ref.name); err != nil {
+				return fmt.Errorf("could not delete %s/%s: %w", ref.folder, ref.name, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		redirectWith(w, r, "/vault", map[string]string{"error": err.Error()})
+		return
+	}
+	redirectWith(w, r, "/vault", map[string]string{
+		"notice": withWarning(fmt.Sprintf("Deleted %d entries.", len(refs)), warning),
 	})
 }
 

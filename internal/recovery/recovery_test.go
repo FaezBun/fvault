@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -140,5 +141,143 @@ func TestRemove(t *testing.T) {
 	}
 	if Configured(path) {
 		t.Fatal("Configured should be false after Remove")
+	}
+}
+
+func TestAnswerThresholdTwoOfThree(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	questions, answers := testQA()
+	if err := Setup(path, questions, answers, []byte("key-key-key-key-key-key-key-12")); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// Two correct + one wrong is enough.
+	two := []string{answers[0], answers[1], "totally-wrong-answer"}
+	key, err := OpenVaultKey(path, two)
+	if err != nil {
+		t.Fatalf("2-of-3 should succeed: %v", err)
+	}
+	if string(key) != "key-key-key-key-key-key-key-12" {
+		t.Fatalf("key = %q", key)
+	}
+
+	// One correct answer is never enough.
+	one := []string{answers[0], "totally-wrong-one", "totally-wrong-two"}
+	if _, err := OpenVaultKey(path, one); !errors.Is(err, ErrInvalidAnswer) {
+		t.Fatalf("1-of-3 err = %v, want ErrInvalidAnswer", err)
+	}
+	// None correct fails too.
+	zero := []string{"wrong-a-answer", "wrong-b-answer", "wrong-c-answer"}
+	if _, err := OpenVaultKey(path, zero); !errors.Is(err, ErrInvalidAnswer) {
+		t.Fatalf("0-of-3 err = %v, want ErrInvalidAnswer", err)
+	}
+}
+
+func TestRecoveryKeyRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	vaultKey := []byte("key-key-key-key-key-key-key-12")
+
+	key, err := SetupKey(path, vaultKey)
+	if err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	normalized := NormalizeRecoveryKey(key)
+	if len(normalized) != KeyLength {
+		t.Fatalf("key %q normalizes to %d chars", key, len(normalized))
+	}
+	if !HasKey(path) {
+		t.Fatal("HasKey should be true")
+	}
+	got, err := OpenVaultKeyWithRecoveryKey(path, key)
+	if err != nil {
+		t.Fatalf("open with key: %v", err)
+	}
+	if string(got) != string(vaultKey) {
+		t.Fatalf("key = %q", got)
+	}
+	// Case and hyphens do not matter.
+	if _, err := OpenVaultKeyWithRecoveryKey(path, strings.ToUpper(key)); err != nil {
+		t.Fatalf("open with upper key: %v", err)
+	}
+	// Wrong keys fail.
+	if _, err := OpenVaultKeyWithRecoveryKey(path, "deadbeef-deadbeef-deadbeef-deadbeef-deadbeef-deadbeef-deadbeef-deadbeef"); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("wrong key err = %v, want ErrInvalidKey", err)
+	}
+	if _, err := OpenVaultKeyWithRecoveryKey(path, "too-short"); !errors.Is(err, ErrInvalidKey) {
+		t.Fatalf("short key err = %v, want ErrInvalidKey", err)
+	}
+}
+
+func TestSetupKeyPreservesQuestions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	questions, answers := testQA()
+	if err := Setup(path, questions, answers, []byte("key-key-key-key-key-key-key-12")); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if _, err := SetupKey(path, []byte("key-key-key-key-key-key-key-12")); err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	got, err := QuestionsFor(path)
+	if err != nil {
+		t.Fatalf("questions lost: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("questions = %v", got)
+	}
+	// Answers still work alongside the key.
+	if _, err := OpenVaultKey(path, answers); err != nil {
+		t.Fatalf("answers after SetupKey: %v", err)
+	}
+}
+
+func TestClearKeyAndClearQuestions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	questions, answers := testQA()
+	vaultKey := []byte("key-key-key-key-key-key-key-12")
+	if err := Setup(path, questions, answers, vaultKey); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	key, err := SetupKey(path, vaultKey)
+	if err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+
+	if err := ClearKey(path); err != nil {
+		t.Fatalf("ClearKey: %v", err)
+	}
+	if HasKey(path) {
+		t.Fatal("key still present")
+	}
+	if _, err := OpenVaultKey(path, answers); err != nil {
+		t.Fatalf("answers must survive ClearKey: %v", err)
+	}
+	if _, err := OpenVaultKeyWithRecoveryKey(path, key); !errors.Is(err, ErrNoKey) {
+		t.Fatalf("key open err = %v, want ErrNoKey", err)
+	}
+
+	// Clearing the last credential removes the file.
+	if err := ClearQuestions(path); err != nil {
+		t.Fatalf("ClearQuestions: %v", err)
+	}
+	if Configured(path) {
+		t.Fatal("file should be gone when nothing is left")
+	}
+}
+
+func TestRewrapKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "recovery.json")
+	key, err := SetupKey(path, []byte("old-key-old-key-old-key-old-"))
+	if err != nil {
+		t.Fatalf("SetupKey: %v", err)
+	}
+	if err := RewrapKey(path, key, []byte("new-key-new-key-new-key-new-")); err != nil {
+		t.Fatalf("RewrapKey: %v", err)
+	}
+	got, err := OpenVaultKeyWithRecoveryKey(path, key)
+	if err != nil {
+		t.Fatalf("open after rewrap: %v", err)
+	}
+	if string(got) != "new-key-new-key-new-key-new-" {
+		t.Fatalf("key = %q", got)
 	}
 }

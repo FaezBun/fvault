@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/http/cookiejar"
@@ -337,7 +338,6 @@ func TestChangePassword(t *testing.T) {
 	}
 }
 
-
 func TestForgotPassword(t *testing.T) {
 	s, v := newTestServer(t)
 	questions := []string{recovery.Questions[0], recovery.Questions[1], recovery.Questions[2]}
@@ -363,7 +363,7 @@ func TestForgotPassword(t *testing.T) {
 
 	// Wrong answers are rejected and counted.
 	resp := postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
-		"csrf": {csrf},
+		"csrf":    {csrf},
 		"answer1": {"Wrong"}, "answer2": {"Wrong"}, "answer3": {"Wrong"},
 		"new": {"brand-new-pass-1"}, "confirm": {"brand-new-pass-1"},
 	})
@@ -374,7 +374,7 @@ func TestForgotPassword(t *testing.T) {
 
 	// Correct answers reset the password.
 	resp = postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
-		"csrf": {csrf},
+		"csrf":    {csrf},
 		"answer1": {"smith"}, "answer2": {"FLUFFY"}, "answer3": {"kuala   lumpur"},
 		"new": {"brand-new-pass-1"}, "confirm": {"brand-new-pass-1"},
 	})
@@ -405,5 +405,165 @@ func TestForgotPassword(t *testing.T) {
 	// The questions keep working with the new key (blob re-wrapped).
 	if _, err := recovery.OpenVaultKey(s.cfg.Paths.Recovery, answers); err != nil {
 		t.Fatalf("recovery after reset: %v", err)
+	}
+}
+
+func TestBulkOperations(t *testing.T) {
+	s, _ := newTestServer(t)
+	ts := httptest.NewServer(s.routes())
+	defer ts.Close()
+	client := newClient(t)
+	noRedirect := &http.Client{
+		Jar:           client.Jar,
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
+	loginPage := get(t, client, ts.URL+"/login")
+	csrf := csrfFrom(t, loginPage)
+	resp := postForm(t, client, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"master-password"},
+	})
+	body := readBody(t, resp)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d: %s", resp.StatusCode, body)
+	}
+	csrf = csrfFrom(t, body)
+
+	for _, name := range []string{"db", "web"} {
+		resp = postForm(t, client, ts.URL+"/entry/new", url.Values{
+			"csrf": {csrf}, "folder": {"server-1"}, "name": {name},
+			"username": {"root"}, "password": {"hunter2-" + name},
+		})
+		body = readBody(t, resp)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(body, "Reveal") {
+			t.Fatalf("create %s failed: %d %s", name, resp.StatusCode, body)
+		}
+	}
+
+	// Bulk move both entries to general.
+	resp = postForm(t, noRedirect, ts.URL+"/entries/move", url.Values{
+		"csrf": {csrf}, "folder": {"general"}, "names": {"server-1/db,server-1/web"},
+	})
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if resp.StatusCode != http.StatusSeeOther || !strings.Contains(loc, "folder=general") {
+		t.Fatalf("bulk move redirect = %d %q", resp.StatusCode, loc)
+	}
+	page := get(t, client, ts.URL+"/vault?folder=general")
+	if !strings.Contains(page, ">db<") || !strings.Contains(page, ">web<") {
+		t.Fatalf("entries not in general after move: %s", page)
+	}
+	page = get(t, client, ts.URL+"/vault?folder=server-1")
+	if strings.Contains(page, ">db<") || strings.Contains(page, ">web<") {
+		t.Fatalf("entries still in server-1: %s", page)
+	}
+
+	// Bulk delete is rejected without a CSRF token.
+	resp = postForm(t, noRedirect, ts.URL+"/entries/delete", url.Values{
+		"csrf": {"wrong"}, "names": {"general/db"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad csrf status = %d, want 403", resp.StatusCode)
+	}
+
+	// Bulk delete removes them.
+	resp = postForm(t, noRedirect, ts.URL+"/entries/delete", url.Values{
+		"csrf": {csrf}, "names": {"general/db,general/web"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || !strings.Contains(resp.Header.Get("Location"), "Deleted+2") {
+		t.Fatalf("bulk delete redirect = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	page = get(t, client, ts.URL+"/vault?folder=general")
+	if !strings.Contains(page, "No entries yet") {
+		t.Fatalf("entries not deleted: %s", page)
+	}
+}
+
+func TestForgotPasswordWithRecoveryKey(t *testing.T) {
+	s, v := newTestServer(t)
+	questions := []string{recovery.Questions[0], recovery.Questions[1], recovery.Questions[2]}
+	answers := []string{"Smith", "Fluffy", "Kuala Lumpur"}
+	if err := recovery.Setup(s.cfg.Paths.Recovery, questions, answers, v.Key); err != nil {
+		t.Fatalf("recovery.Setup: %v", err)
+	}
+	key, err := recovery.SetupKey(s.cfg.Paths.Recovery, v.Key)
+	if err != nil {
+		t.Fatalf("recovery.SetupKey: %v", err)
+	}
+	ts := httptest.NewServer(s.routes())
+	defer ts.Close()
+	client := newClient(t)
+	noRedirect := &http.Client{
+		Jar:           client.Jar,
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
+	// The page offers both credentials.
+	page := get(t, client, ts.URL+"/forgot")
+	if !strings.Contains(page, "mode=answers") || !strings.Contains(page, "mode=key") {
+		t.Fatalf("choice links missing: %s", page)
+	}
+	// The key mode shows a key input.
+	page = get(t, client, ts.URL+"/forgot?mode=key")
+	if !strings.Contains(page, `name="recovery_key"`) {
+		t.Fatalf("recovery key input missing: %s", page)
+	}
+	csrf := csrfFrom(t, page)
+
+	// A well-formed but wrong key fails.
+	wrongKey := strings.Repeat("0000-", 7) + "0000"
+	resp := postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
+		"csrf": {csrf}, "mode": {"key"}, "recovery_key": {wrongKey},
+		"new": {"brand-new-pass-9"}, "confirm": {"brand-new-pass-9"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong key status = %d, want 401", resp.StatusCode)
+	}
+
+	// The real key resets the password.
+	resp = postForm(t, noRedirect, ts.URL+"/forgot", url.Values{
+		"csrf": {csrf}, "mode": {"key"}, "recovery_key": {key},
+		"new": {"brand-new-pass-9"}, "confirm": {"brand-new-pass-9"},
+	})
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(loc, "/login?notice=") {
+		t.Fatalf("reset redirect = %d %q", resp.StatusCode, loc)
+	}
+	if !strings.Contains(loc, "Security+questions+were+cleared") {
+		t.Fatalf("missing questions-cleared note in %q", loc)
+	}
+
+	// Login with the new password works, the old one does not.
+	loginPage := get(t, client, ts.URL+"/login")
+	csrf = csrfFrom(t, loginPage)
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"master-password"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old password status = %d, want 401", resp.StatusCode)
+	}
+	resp = postForm(t, noRedirect, ts.URL+"/login", url.Values{
+		"csrf": {csrf}, "username": {"alice"}, "password": {"brand-new-pass-9"},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("new password login = %d", resp.StatusCode)
+	}
+
+	// The key survived its own reset (re-wrapped), the questions did not.
+	if _, err := recovery.OpenVaultKeyWithRecoveryKey(s.cfg.Paths.Recovery, key); err != nil {
+		t.Fatalf("key after reset: %v", err)
+	}
+	if _, err := recovery.QuestionsFor(s.cfg.Paths.Recovery); !errors.Is(err, recovery.ErrNotConfigured) {
+		t.Fatalf("questions after key reset: %v", err)
 	}
 }

@@ -5,18 +5,36 @@
   <div class="content-head">
     <div>
       <h1>Forgot Master Password</h1>
-      <p class="muted">Answer your 3 security questions to set a new Master Password. Attempts are rate limited.</p>
+      <p class="muted">Pick a credential you still have: your security answers or your recovery key. Attempts are rate limited.</p>
     </div>
     <a class="button" href="/login">Back to login</a>
   </div>
 
-  {{if .RecoveryQuestions}}
+  {{if or .RecoveryQuestions .RecoveryHasKey}}
+  <div class="choice-bar">
+    {{if .RecoveryQuestions}}
+    <a class="button{{if eq .ForgotMode "answers"}} primary{{end}}" href="/forgot?mode=answers">Security answers (2 of 3)</a>
+    {{end}}
+    {{if .RecoveryHasKey}}
+    <a class="button{{if eq .ForgotMode "key"}} primary{{end}}" href="/forgot?mode=key">Recovery key</a>
+    {{end}}
+  </div>
+
   <form method="post" action="/forgot" class="stack card" autocomplete="off">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    {{range $i, $q := .RecoveryQuestions}}
-    <label>Answer {{add $i 1}} &middot; {{$q}}
-      <input type="text" name="answer{{add $i 1}}" autocomplete="off" required minlength="4">
-    </label>
+    <input type="hidden" name="mode" value="{{.ForgotMode}}">
+    {{if eq .ForgotMode "answers"}}
+      {{range $i, $q := .RecoveryQuestions}}
+      <label>Answer {{add $i 1}} &middot; {{$q}}
+        <input type="text" name="answer{{add $i 1}}" autocomplete="off" required minlength="4">
+      </label>
+      {{end}}
+      <span class="hint">Get at least 2 of the 3 answers right - one correct answer is not enough.</span>
+    {{else}}
+      <label>Recovery key
+        <input type="text" name="recovery_key" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx" autocomplete="off" spellcheck="false" required>
+      </label>
+      <span class="hint">The 128-bit key you saved when running <code>fvault recovery key</code>. Hyphens and case do not matter.</span>
     {{end}}
     <label>New Master Password
       <input type="password" name="new" autocomplete="new-password" required>
@@ -24,7 +42,7 @@
     <label>Confirm New Master Password
       <input type="password" name="confirm" autocomplete="new-password" required>
     </label>
-    <span class="hint">At least 8 characters; 12+ is recommended. Your security questions keep working afterwards.</span>
+    <span class="hint">At least 8 characters; 12+ is recommended. The credential you used keeps working afterwards.</span>
     <div class="form-actions">
       <button type="submit" class="primary">Reset password</button>
       <a class="button" href="/login">Cancel</a>

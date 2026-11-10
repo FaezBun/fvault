@@ -23,6 +23,7 @@ func newRecoveryCmd() *cobra.Command {
 	cmd.AddCommand(
 		newRecoverySetupCmd(),
 		newRecoveryResetCmd(),
+		newRecoveryKeyCmd(),
 		newRecoveryDisableCmd(),
 		newRecoveryStatusCmd(),
 	)
@@ -98,29 +99,71 @@ func applyRecoverySetup(p config.Paths, questions, answers []string, v *vault.Va
 }
 
 // applyRecoveryReset unlocks the vault with the answers, sets a new Master
-// Password, and re-wraps the recovery blob so the questions stay valid.
-func applyRecoveryReset(p config.Paths, answers []string, newPassword string) error {
+// Password, and re-wraps the answers so they stay valid. A configured
+// recovery key cannot be re-wrapped without the key itself, so it is cleared
+// and the returned flag tells the caller to warn about it.
+func applyRecoveryReset(p config.Paths, answers []string, newPassword string) (bool, error) {
 	key, err := recovery.OpenVaultKey(p.Recovery, answers)
 	if err != nil {
-		return err
+		return false, err
 	}
 	info, err := vault.Inspect(p.Vault)
 	if err != nil {
-		return err
+		return false, err
 	}
 	v, err := vault.OpenWithKey(p.Vault, key, info.Salt, info.Params)
 	if err != nil {
-		return errors.New("the vault could not be opened with these answers")
+		return false, errors.New("the vault could not be opened with these answers")
 	}
 	v.Payload.RecordAudit("vault.rekey", "", "password reset via security questions")
 	if err := v.Rekey(newPassword, crypto.DefaultParams()); err != nil {
-		return err
+		return false, err
 	}
 	questions, err := recovery.QuestionsFor(p.Recovery)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return recovery.Setup(p.Recovery, questions, answers, v.Key)
+	if err := recovery.Setup(p.Recovery, questions, answers, v.Key); err != nil {
+		return false, err
+	}
+	keyCleared := recovery.HasKey(p.Recovery)
+	if keyCleared {
+		if err := recovery.ClearKey(p.Recovery); err != nil {
+			return false, err
+		}
+	}
+	return keyCleared, nil
+}
+
+// applyRecoveryResetWithKey unlocks the vault with the recovery key, sets a
+// new Master Password, and re-wraps the key. The answers cannot be re-wrapped
+// without them, so they are cleared; the returned flag tells the caller to
+// warn about re-running setup.
+func applyRecoveryResetWithKey(p config.Paths, recoveryKey, newPassword string) (bool, error) {
+	key, err := recovery.OpenVaultKeyWithRecoveryKey(p.Recovery, recoveryKey)
+	if err != nil {
+		return false, err
+	}
+	info, err := vault.Inspect(p.Vault)
+	if err != nil {
+		return false, err
+	}
+	v, err := vault.OpenWithKey(p.Vault, key, info.Salt, info.Params)
+	if err != nil {
+		return false, errors.New("the vault could not be opened with the recovery key")
+	}
+	_, questionsErr := recovery.QuestionsFor(p.Recovery)
+	v.Payload.RecordAudit("vault.rekey", "", "password reset via recovery key")
+	if err := v.Rekey(newPassword, crypto.DefaultParams()); err != nil {
+		return false, err
+	}
+	if err := recovery.ClearQuestions(p.Recovery); err != nil {
+		return false, err
+	}
+	if err := recovery.RewrapKey(p.Recovery, recoveryKey, v.Key); err != nil {
+		return false, err
+	}
+	return questionsErr == nil, nil
 }
 
 // offerRecoverySetup runs the mandatory security-question setup right after a
@@ -191,7 +234,7 @@ func newRecoverySetupCmd() *cobra.Command {
 func newRecoveryResetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset",
-		Short: "Reset a forgotten Master Password with the security answers",
+		Short: "Reset a forgotten Master Password with the answers or the recovery key",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p, err := resolvePaths()
@@ -202,29 +245,76 @@ func newRecoveryResetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			questions, err := recovery.QuestionsFor(p.Recovery)
-			if err != nil {
-				if errors.Is(err, recovery.ErrNotConfigured) {
-					return errors.New("security questions are not set up (run 'fvault recovery setup' first)")
+			questions, questionsErr := recovery.QuestionsFor(p.Recovery)
+			hasKey := recovery.HasKey(p.Recovery)
+			if questionsErr != nil && !hasKey {
+				if errors.Is(questionsErr, recovery.ErrNotConfigured) {
+					return errors.New("recovery is not set up (run 'fvault recovery setup' first)")
 				}
-				return err
+				return questionsErr
 			}
-			for i, q := range questions {
-				fmt.Printf("  %d) %s\n", i+1, q)
+
+			mode := "answers"
+			if questionsErr == nil && hasKey {
+				fmt.Println("Reset using:")
+				fmt.Println("  1) Security answers (need 2 of 3)")
+				fmt.Println("  2) Recovery key")
+				line, err := readLine("Choice [1]: ")
+				if err != nil {
+					return err
+				}
+				if strings.TrimSpace(line) == "2" {
+					mode = "key"
+				}
+			} else if questionsErr != nil {
+				mode = "key"
 			}
-			answers, err := promptAnswers(questions)
-			if err != nil {
-				return err
-			}
+
 			bm := backup.New(p, s)
 			if _, err := bm.Create(p.Vault, "pre-recovery"); err != nil {
 				fmt.Printf("[WARN] Could not create a pre-reset snapshot: %v\n", err)
+			}
+
+			if mode == "key" {
+				recoveryKey, err := readPassword("Recovery key: ")
+				if err != nil {
+					return err
+				}
+				newPassword, err := newPasswordConfirmed()
+				if err != nil {
+					return err
+				}
+				questionsCleared, err := applyRecoveryResetWithKey(p, recoveryKey, newPassword)
+				if err != nil {
+					return err
+				}
+				res, err := bm.Create(p.Vault, "recovery-reset")
+				if err != nil {
+					return err
+				}
+				fmt.Println("[OK] Master Password reset and vault re-encrypted.")
+				fmt.Println("[i]  Your recovery key still works with the new password.")
+				if questionsCleared {
+					fmt.Println("[i]  Security questions were cleared. Run 'fvault recovery setup' again to reconfigure.")
+				}
+				printBackupResult(res)
+				return nil
+			}
+
+			for i, q := range questions {
+				fmt.Printf("  %d) %s\n", i+1, q)
+			}
+			fmt.Printf("(at least %d of %d answers must be correct)\n", recovery.AnswerThreshold, len(questions))
+			answers, err := promptAnswers(questions)
+			if err != nil {
+				return err
 			}
 			newPassword, err := newPasswordConfirmed()
 			if err != nil {
 				return err
 			}
-			if err := applyRecoveryReset(p, answers, newPassword); err != nil {
+			keyCleared, err := applyRecoveryReset(p, answers, newPassword)
+			if err != nil {
 				return err
 			}
 			res, err := bm.Create(p.Vault, "recovery-reset")
@@ -233,7 +323,48 @@ func newRecoveryResetCmd() *cobra.Command {
 			}
 			fmt.Println("[OK] Master Password reset and vault re-encrypted.")
 			fmt.Println("[i]  Your security questions still work with the new password.")
+			if keyCleared {
+				fmt.Println("[i]  Recovery key was cleared (it cannot be re-wrapped without the key). Run 'fvault recovery key' to make a new one.")
+			}
 			printBackupResult(res)
+			return nil
+		},
+	}
+}
+
+func newRecoveryKeyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "key",
+		Short: "Generate or replace the recovery key (shown once)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p, err := resolvePaths()
+			if err != nil {
+				return err
+			}
+			v, err := openVault(p)
+			if err != nil {
+				return err
+			}
+			if recovery.HasKey(p.Recovery) {
+				ok, err := confirm("A recovery key already exists. Replace it?", false)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Println("Cancelled.")
+					return nil
+				}
+			}
+			key, err := recovery.SetupKey(p.Recovery, v.Key)
+			if err != nil {
+				return err
+			}
+			fmt.Println("[OK] Recovery key created. SAVE IT NOW - it is shown only once:")
+			fmt.Println()
+			fmt.Printf("    %s\n", key)
+			fmt.Println()
+			fmt.Println("[i]  Use it with 'fvault recovery reset' (choose 'Recovery key').")
 			return nil
 		},
 	}
@@ -279,18 +410,29 @@ func newRecoveryStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			questions, err := recovery.QuestionsFor(p.Recovery)
-			if err != nil {
-				if errors.Is(err, recovery.ErrNotConfigured) {
-					fmt.Println("Security questions: NOT set up")
+			questions, questionsErr := recovery.QuestionsFor(p.Recovery)
+			hasKey := recovery.HasKey(p.Recovery)
+			if questionsErr != nil && !hasKey {
+				if errors.Is(questionsErr, recovery.ErrNotConfigured) {
+					fmt.Println("Recovery: NOT set up")
 					fmt.Println("[i]  Run 'fvault recovery setup' to enable account recovery.")
 					return nil
 				}
-				return err
+				return questionsErr
 			}
-			fmt.Println("Security questions: set up (" + p.Recovery + ")")
-			for i, q := range questions {
-				fmt.Printf("  %d) %s\n", i+1, q)
+			fmt.Println("Recovery file: " + p.Recovery)
+			if questionsErr == nil {
+				fmt.Println("Security questions: set up (need 2 of 3 answers)")
+				for i, q := range questions {
+					fmt.Printf("  %d) %s\n", i+1, q)
+				}
+			} else {
+				fmt.Println("Security questions: cleared")
+			}
+			if hasKey {
+				fmt.Println("Recovery key: set up")
+			} else {
+				fmt.Println("Recovery key: not set up ('fvault recovery key' to create)")
 			}
 			return nil
 		},

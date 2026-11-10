@@ -2,6 +2,9 @@
 
 ![fvault logo](docs/fvault-logo.jpg)
 
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 > **Your passwords, encrypted.** One Master Password instead of a plaintext
 > Markdown file — folders, tags, CLI and web, with backups you can take with you.
 
@@ -130,27 +133,35 @@ there — the new computer can run `fvault backup restore latest` instead.
 
 ## Account recovery
 
-fvault can reset a forgotten Master Password with **3 security questions**.
+fvault can reset a forgotten Master Password with **3 security questions**
+(need **2 of 3** correct) and an optional **recovery key**.
 
-- Setting them up is **mandatory during first run** (`fvault init` /
-  `fvault start`): you pick 3 questions and answer them before the menu
-  opens. To replace them later, run `fvault recovery setup` (the vault must
-  be unlocked).
-- Pick 3 questions from a fixed list of 16 and answer them. Invented,
-  passphrase-style answers are much stronger than real facts about you.
-- Answers are never stored as plain text: they wrap the vault's encryption
-  key (Argon2id + AES-GCM) in `data/recovery.json` (mode `0600`), outside the
-  vault itself.
-- Reset from the web (**Forgot Master Password?** on the login page) or from
-  the CLI with `fvault recovery reset`. Attempts are rate limited.
-- Changing the Master Password clears the questions for safety - run
-  `fvault recovery setup` again afterwards.
-- Remove them any time with `fvault recovery disable`; check with
-  `fvault recovery status`.
+- Setting the questions up is **mandatory during first run** (`fvault init` /
+  `fvault start`): you pick 3 questions and answer them before the menu opens.
+  To replace them later, run `fvault recovery setup` (the vault must be
+  unlocked).
+- Pick 3 questions from a fixed list of 16. **Any 2 correct answers unlock the
+  reset - one is never enough.** Invented, passphrase-style answers are much
+  stronger than real facts about you.
+- Answers are never stored as plain text: each one wraps the vault's
+  encryption key (Argon2id + AES-GCM) in `data/recovery.json` (mode `0600`),
+  outside the vault itself.
+- **Recovery key** (optional second credential): `fvault recovery key`
+  generates a random 128-bit key shown **once** - save it offline. It works
+  even if you forget the answers.
+- The **Forgot Master Password?** page on the login asks you to pick one of
+  the two credentials (answers or key). Both the web flow and
+  `fvault recovery reset` are rate limited.
+- Changing the Master Password clears both credentials for safety - run
+  `fvault recovery setup` / `fvault recovery key` again afterwards. The same
+  applies after a reset: whichever credential you used survives, the other is
+  cleared (you are told on screen).
+- Manage them with `fvault recovery setup|key|reset|disable|status`.
 
-> **Security note:** the answers are a second, weaker password. Anyone who
-> copies `recovery.json` and guesses your answers owns the vault, so treat the
-> answers like a passphrase - not like facts published on your social media.
+> **Security note:** the answers are a second, weaker password (and only 2 of
+> 3 need to be right). Anyone who copies `recovery.json` and guesses your
+> answers or key owns the vault, so treat them like a passphrase - not like
+> facts published on your social media.
 
 ## Web UI
 
@@ -232,8 +243,10 @@ fvault tag delete <name>
 fvault kit
 fvault recovery setup
 fvault recovery reset
+fvault recovery key
 fvault recovery disable
 fvault recovery status
+fvault audit
 fvault import-md <file.md> [--folder NAME] [--dry-run] [--overwrite]
 fvault import-csv <file.csv> [--folder NAME] [--dry-run] [--overwrite]
 fvault export-csv <file.csv>
@@ -302,8 +315,8 @@ Simplest format — one `Name : Password` per line, no headings or key lines
 needed:
 
 ```markdown
-Supervisor : kalimantan123
-Student Portal (Degree) : yoyoyo@nama12333333
+Supervisor : WFS670303
+Student Portal (Degree) : UiTM@Jasin787
 Steam : my-steam-password
 ```
 
@@ -337,6 +350,20 @@ Only a name column and a password column are required:
 name,password
 Router,secret1
 My Router 2.0,secret2
+```
+
+**Browser exports work directly** — the delimiter (comma or semicolon) is
+auto-detected and extra columns are ignored:
+
+- Chrome / Edge: `chrome://password-manager` -> **Export passwords** -> CSV
+  (`name,url,username,password,note`).
+- Firefox: `about:logins` -> menu -> **Export Logins** -> CSV
+  (`url,username,password,...`; the username becomes the entry name).
+- KeePassXC: **Export** -> CSV (`Title,Username,Password,URL,Notes`).
+
+```bash
+fvault import-csv chrome-passwords.csv --folder imported --dry-run
+fvault import-csv chrome-passwords.csv --folder imported
 ```
 
 ### JSON
